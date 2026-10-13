@@ -9,4 +9,4 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     answer: str
-    category: Literal["script", "textbook", "comments"]
+    category: Literal["script", "textbook", "comments", "multi"]

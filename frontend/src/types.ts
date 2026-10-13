@@ -4,5 +4,5 @@ export type ChatRequest = {
 
 export type ChatResponse = {
   answer: string
-  category: 'script' | 'textbook' | 'comments'
+  category: 'script' | 'textbook' | 'comments' | 'multi'
 }
