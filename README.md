@@ -2,7 +2,7 @@
 
 A multi-agent RAG chatbot that answers questions about the film *Interstellar*. A question is routed to the right knowledge source (screenplay, science textbook, viewer comments, or several at once), relevant passages are retrieved from a vector database, and a local LLM writes an answer grounded in those passages.
 
-v2 is a rewrite of [youtube-intelligence-engine](https://github.com/sjv24/youtube-intelligence-engine) (Streamlit, single-folder scripts) as a typed full-stack application: React + TypeScript frontend, FastAPI backend, and a LangGraph agent with a structured-output router.
+v2 is a rewrite of [youtube-intelligence-engine](https://github.com/sjv24/youtube-intelligence-engine) (a Streamlit app built from notebooks and scripts) as a typed full-stack application: React + TypeScript frontend, FastAPI backend, and a LangGraph agent with a structured-output router.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ flowchart TD
 - **Retrieve from all sources, generate once (multi).** An earlier design ran a full agent per source and then a synthesis call, so a multi-source question needed four LLM calls. Retrieval is cheap and generation is slow, so multi retrieves from every source and generates a single answer from tagged excerpts.
 - **Grounded answers.** The system prompt restricts the model to the retrieved excerpts and tells it to say it doesn't know otherwise.
 - **Layered backend.** `api/` (HTTP) calls `agent/` (routing) which calls `retrieval/` and `generation/`. Request and response shapes live in `schemas/` and are mirrored in `frontend/src/types.ts`.
-- **Config in `.env`.** Secrets are read through `pydantic-settings`; `.env` is git-ignored and `.env.example` documents the variables.
+- **Config in `.env`.** The OpenAI key is read through `pydantic-settings`; `.env` is git-ignored and `.env.example` documents the variable. Model names, the API URL and the CORS origin are still constants in the code.
 
 ## Project structure
 
@@ -46,9 +46,21 @@ backend/
     retrieval/       search.py (embedding + Weaviate query)
     generation/      generator.py (prompt + Ollama call)
     core/config.py   settings from .env
+  evals/
+    dataset.jsonl    golden questions for evaluating retrieval and answers (in progress)
 frontend/
   src/               App.tsx, api.ts, types.ts
 ```
+
+## The index (what is in Weaviate)
+
+| Collection | Objects | Embedding model | Content |
+| --- | --- | --- | --- |
+| `Interstellar_Script` | 655 | Ollama `embeddinggemma`, 768 dims | chunks of about 245 characters from the screenplay |
+| `Interstellar_Textbook` | 2,275 | Ollama `embeddinggemma`, 768 dims | chunks of about 245 characters from *The Science of Interstellar* |
+| `Interstellar_Comments` | 41,358 | OpenAI `text-embedding-3-small`, 1536 dims | one YouTube comment per object, with `sentiment` and `aspects` from v1's aspect-based sentiment analysis |
+
+All three collections use cosine HNSW vector search and have BM25 keyword indexing enabled (not used by `/chat` yet). Script and textbook chunks carry a `par_ID` (1 to N) in reading order; every object also has a Weaviate UUID.
 
 ## Running it locally
 
@@ -59,7 +71,15 @@ ollama pull qwen3:8b
 ollama pull embeddinggemma
 ```
 
-**Data:** the backend reads three existing Weaviate collections (`Interstellar_Script`, `Interstellar_Textbook`, `Interstellar_Comments`) built by the ingestion pipeline of v1. Weaviate must be running on `localhost:8080` with those collections populated. The ingestion scripts are not part of this repository yet.
+**Data:** the backend reads the three Weaviate collections described above, which were built outside this repository by the ingestion pipeline of v1. The source PDFs are not included because of copyright, and the ingestion code is not part of this repository yet, so a fresh clone has no index until that is added.
+
+Start Weaviate with a **named volume**. Without one, Weaviate keeps its data inside the container and loses it when the container is removed:
+
+```bash
+docker run -d --name weaviate -p 8080:8080 -p 50051:50051 -v weaviate_data:/var/lib/weaviate -e PERSISTENCE_DATA_PATH=/var/lib/weaviate semitechnologies/weaviate:1.37.8
+```
+
+It must be reachable on `localhost:8080` with the collections populated.
 
 **Backend**
 
@@ -98,17 +118,24 @@ Open <http://localhost:5173>.
 
 Invalid input (empty or over 1000 characters) returns `422` before any model is called.
 
+`GET /health` returns `{"status": "ok"}` and does not check Weaviate or Ollama.
+
 ## Known limitations
 
 - A request takes roughly 15 to 60 seconds on a laptop GPU, depending on the route; responses are not streamed yet.
-- Retrieval is plain vector search over small, fixed-size chunks; some chunks start or end mid-sentence and some source text has encoding damage, which can make answers slightly inaccurate.
+- Retrieval is plain vector search over small, fixed-size chunks (about 245 characters); most script and textbook chunks start or end mid-sentence, which can make answers slightly inaccurate.
 - The API URL and CORS origin are hardcoded for local development.
-- No automated tests or evaluation set yet.
+- There is no error handling around the models and the database: if Ollama or Weaviate is down, or the router returns invalid output, `/chat` fails with an HTTP 500.
+- Answers do not cite their sources yet.
+- No automated tests yet. The evaluation set is in progress (`backend/evals/dataset.jsonl`), and no evaluation results have been recorded.
 
 ## Roadmap
 
-- Evaluation set with retrieval hit rate, recall@k, answer accuracy and p50/p95 latency
-- Tests (pytest for the backend, Vitest for the UI)
-- Hybrid search and better chunking, measured against the eval set
-- Streaming responses and embedding caching, with before/after latency numbers
-- Docker Compose, linting and formatting, CI
+- [x] Typed FastAPI backend with a structured-output router and a React chat UI
+- [ ] Ingestion code in this repository (chunk, embed, index), reproducing the current index
+- [ ] Citations: return chunk IDs, sources and scores from `/chat`
+- [ ] Golden dataset with retrieval hit rate, recall@k, MRR, routing accuracy and p50/p95 latency (in progress)
+- [ ] Hybrid search and reranking, each measured against the golden dataset
+- [ ] Metadata filters on comments and an aggregate-question tool
+- [ ] Streaming responses, Docker Compose, tests (pytest, Vitest), linting and CI
+- [ ] Better chunking (scene and section aware), compared side by side with the current index
