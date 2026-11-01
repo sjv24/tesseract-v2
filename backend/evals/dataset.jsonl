@@ -1,0 +1,44 @@
+{"id": "q001", "question": "Who is TARS?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q002", "question": "What is Cooper's daughter's favourite food?", "type": "unanswerable", "answerable": false}
+{"id": "q003", "question": "Who are the actors in the movie?", "type": "exact_name", "answerable": true}
+{"id": "q004", "question": "What is TARS's honesty setting?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q005", "question": "Who is Dr. Mann?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q006", "question": "What is the name of the spaceship that carries the crew?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q007", "question": "Who is CASE?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q008", "question": "Who is Romilly?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q009", "question": "What are the Lazarus missions?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q010", "question": "What are Plan A and Plan B?", "type": "exact_name", "gold_route": "script", "answerable": true}
+{"id": "q011", "question": "What is Gargantua?", "type": "exact_name", "gold_route": "textbook", "answerable": true}
+{"id": "q012", "question": "Who is Kip Thorne?", "type": "exact_name", "gold_route": "textbook", "answerable": true}
+{"id": "q013", "question": "What is the Penrose process?", "type": "exact_name", "gold_route": "textbook", "answerable": true}
+{"id": "q014", "question": "How does gravitational lensing work?", "type": "concept", "gold_route": "textbook", "answerable": true}
+{"id": "q015", "question": "What is an accretion disk?", "type": "concept", "gold_route": "textbook", "answerable": true}
+{"id": "q016", "question": "Why are there enormous tides on Miller's planet?", "type": "concept", "gold_route": "textbook", "answerable": true}
+{"id": "q017", "question": "How could a wormhole exist according to physics?", "type": "concept", "gold_route": "textbook", "answerable": true}
+{"id": "q018", "question": "How does time pass differently near a black hole?", "type": "concept", "gold_route": "textbook", "answerable": true}
+{"id": "q019", "question": "What is the blight that threatens Earth?", "type": "concept", "gold_route": "script", "answerable": true}
+{"id": "q020", "question": "What do viewers think about the ending?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
+{"id": "q021", "question": "What do viewers say about the soundtrack?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
+{"id": "q022", "question": "What do viewers dislike about the film?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
+{"id": "q023", "question": "How did people react to Hans Zimmer's organ music?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
+{"id": "q024", "question": "What do viewers think of Matthew McConaughey's performance?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
+{"id": "q025", "question": "What do fans say about the docking scene?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
+{"id": "q026", "question": "What do viewers say is confusing about the movie?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
+{"id": "q027", "question": "What share of the comments are negative?", "type": "aggregate", "gold_route": "comments", "answerable": true}
+{"id": "q028", "question": "How many comments mention the soundtrack?", "type": "aggregate", "gold_route": "comments", "answerable": true}
+{"id": "q029", "question": "Which topic do viewers mention most often?", "type": "aggregate", "gold_route": "comments", "answerable": true}
+{"id": "q030", "question": "What percentage of comments mention Hans Zimmer?", "type": "aggregate", "gold_route": "comments", "answerable": true}
+{"id": "q031", "question": "Is the tesseract scene scientifically accurate, and how did viewers react to it?", "type": "cross_source", "gold_route": "multi", "answerable": true}
+{"id": "q032", "question": "Is the wormhole in the film realistic, and what do fans think of it?", "type": "cross_source", "gold_route": "multi", "answerable": true}
+{"id": "q033", "question": "How does the film's depiction of time dilation compare with real physics?", "type": "cross_source", "gold_route": "multi", "answerable": true}
+{"id": "q034", "question": "Is Miller's planet realistic according to the science, and how does the film show it?", "type": "cross_source", "gold_route": "multi", "answerable": true}
+{"id": "q035", "question": "Does Gargantua match real black hole physics, and did viewers like how it looks?", "type": "cross_source", "gold_route": "multi", "answerable": true}
+{"id": "q036", "question": "Why does Cooper cry while watching the messages?", "type": "ambiguous_route", "gold_route": "script", "answerable": true}
+{"id": "q037", "question": "Why is the ending so confusing?", "type": "ambiguous_route", "gold_route": "multi", "answerable": true}
+{"id": "q038", "question": "Was it the right decision for Cooper to leave Murph?", "type": "ambiguous_route", "gold_route": "script", "answerable": true}
+{"id": "q039", "question": "What is the film really about?", "type": "ambiguous_route", "gold_route": "multi", "answerable": true}
+{"id": "q040", "question": "What brand of coffee does Cooper drink?", "type": "unanswerable", "answerable": false}
+{"id": "q041", "question": "Who won the Oscar for best director in 2015?", "type": "unanswerable", "answerable": false}
+{"id": "q042", "question": "What is the sequel to Interstellar about?", "type": "unanswerable", "answerable": false}
+{"id": "q043", "question": "How many steps are in the Endurance's main corridor?", "type": "unanswerable", "answerable": false}
+{"id": "q044", "question": "What is the weather in Dubai today?", "type": "unanswerable", "answerable": false}
