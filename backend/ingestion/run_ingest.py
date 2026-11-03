@@ -34,8 +34,12 @@ def git_state() -> dict:
         commit = subprocess.run(
             ["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, cwd=ROOT_DIR, check=True
         ).stdout.strip()
+        # the record file itself is ignored: writing it must not make the tree look "dirty"
+        ignore_record = f":(exclude){VERSION_FILE.relative_to(ROOT_DIR).as_posix()}"
         dirty = bool(
-            subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, cwd=ROOT_DIR).stdout.strip()
+            subprocess.run(
+                ["git", "status", "--porcelain", "--", ".", ignore_record], capture_output=True, text=True, cwd=ROOT_DIR
+            ).stdout.strip()
         )
         return {"commit": commit, "uncommitted_changes": dirty}
     except Exception:
