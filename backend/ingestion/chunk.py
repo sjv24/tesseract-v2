@@ -19,7 +19,9 @@ CHUNK_TOKENS = 400  # target chunk size
 OVERLAP_RATIO = 0.125  # share of a chunk repeated at the start of the next one
 CHUNK_CHARS = CHUNK_TOKENS * CHARS_PER_TOKEN  # 1600 characters
 OVERLAP_CHARS = int(CHUNK_CHARS * OVERLAP_RATIO)  # 200 characters
-MIN_CHARS = 300  # a section smaller than this is always merged with the next one
+MIN_CHARS = 300  # nothing smaller than this is left alone: tiny sections merge forward, tiny tails merge back
+MAX_CHUNK_CHARS = CHUNK_CHARS + MIN_CHARS  # a chunk that absorbed a short tail can reach this size (1900 characters)
+MIN_OVERLAP = 20  # a repeated stretch shorter than this is not treated as "overlap" when merging a tail
 
 # Element categories that are noise (page numbers, running titles, OCR junk from figures)
 DROP_CATEGORIES = {"script": {"Header"}, "textbook": {"Header", "Image"}}
@@ -149,6 +151,22 @@ def make_splitter() -> RecursiveCharacterTextSplitter:
     )
 
 
+def merge_small_tail(pieces: list[Document], joiner: str) -> list[Document]:
+    """The splitter can leave a short leftover at the end of a long section. Glue it onto the previous piece.
+
+    The leftover begins with a copy of the previous piece's ending (the overlap), so that copy is cut off first.
+    Short chunks are a problem for search: they match short questions too easily and crowd out better chunks.
+    """
+    if len(pieces) >= 2 and len(pieces[-1].page_content) < MIN_CHARS:
+        tail = pieces.pop().page_content
+        previous = pieces[-1]
+        text = previous.page_content
+        longest = min(len(tail), len(text))
+        overlap = next((n for n in range(longest, MIN_OVERLAP - 1, -1) if text.endswith(tail[:n])), 0)
+        previous.page_content = text + (tail[overlap:] if overlap else joiner + tail)
+    return pieces
+
+
 def chunk_id(source: str, position: int, text: str) -> str:
     raw = f"{source}|{position}|{text}".encode("utf-8")
     return hashlib.sha1(raw).hexdigest()[:16]
@@ -158,7 +176,10 @@ def build_chunks(source: str, path: Path) -> list[Chunk]:
     elements = clean_elements(load_elements(path), source)
     sections = split_into_sections(elements, source)
     documents = pack_sections(sections, source, CHUNK_CHARS)
-    pieces = make_splitter().split_documents(documents)
+    splitter = make_splitter()
+    pieces: list[Document] = []
+    for document in documents:
+        pieces.extend(merge_small_tail(splitter.split_documents([document]), JOINERS[source]))
     return [
         Chunk(id=chunk_id(source, position, piece.page_content), source=source, position=position,
               text=piece.page_content, **piece.metadata)

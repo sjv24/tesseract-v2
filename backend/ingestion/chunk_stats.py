@@ -44,7 +44,7 @@ def check_source(source: str, filename: str) -> bool:
     print("=" * 72)
     print(f"{source}: {len(chunks)} chunks from {len(cleaned)} cleaned elements")
     print(f"  size (chars): min={sizes[0]}  p10={sizes[len(sizes) // 10]}  median={statistics.median(sizes):.0f}  "
-          f"p90={sizes[9 * len(sizes) // 10]}  max={sizes[-1]}   (limit {c.CHUNK_CHARS}, ~{c.CHUNK_TOKENS} tokens)")
+          f"p90={sizes[9 * len(sizes) // 10]}  max={sizes[-1]}   (target {c.CHUNK_CHARS}, hard max {c.MAX_CHUNK_CHARS})")
     print(f"  end at a sentence end: {ends}/{len(chunks)} = {percent(ends, len(chunks))}   "
           f"(old 245-char index: {OLD_INDEX_SENTENCE_END[source]})")
     print(f"  under {c.MIN_CHARS} chars: {sum(1 for s in sizes if s < c.MIN_CHARS)}")

@@ -146,6 +146,45 @@ def test_splitter_never_exceeds_the_size_limit_even_without_any_spaces():
     assert all(len(p) <= c.CHUNK_CHARS for p in pieces)
 
 
+# --- merge_small_tail ------------------------------------------------------------------------
+def doc(text):
+    return c.Document(page_content=text, metadata={"section": "S", "chapter": "", "page": 1})
+
+
+def test_a_short_tail_is_glued_on_and_the_duplicated_overlap_is_removed():
+    previous = " ".join(f"word{i:03d}" for i in range(150))  # a long piece made of distinct words
+    overlap = previous[-60:]  # the splitter starts the next piece with a copy of the previous ending
+    tail = overlap + " unique ending"
+    merged = c.merge_small_tail([doc(previous), doc(tail)], " ")
+    assert len(merged) == 1
+    assert merged[0].page_content == previous + " unique ending"  # the overlap appears once, not twice
+
+
+def test_a_short_tail_without_any_overlap_is_joined_with_the_joiner():
+    merged = c.merge_small_tail([doc("first " * 100), doc("unrelated leftover")], "\n")
+    assert merged[0].page_content == "first " * 100 + "\n" + "unrelated leftover"
+
+
+def test_a_tail_that_is_long_enough_is_left_alone():
+    pieces = [doc("a" * 1000), doc("b" * c.MIN_CHARS)]
+    assert len(c.merge_small_tail(pieces, " ")) == 2
+
+
+def test_a_single_short_piece_is_left_alone():
+    assert len(c.merge_small_tail([doc("short")], " ")) == 1
+
+
+@pytest.mark.parametrize("sentences", range(55, 130, 3))
+def test_no_section_length_ever_leaves_a_short_leftover_chunk(tmp_path, sentences):
+    elements = [el("1 Chapter", "Title")] + [el(f"Sentence number {i:04d} is right here.") for i in range(sentences)]
+    chunks = c.build_chunks("textbook", write_source(tmp_path, elements))
+    if len(chunks) > 1:
+        assert all(len(x.text) >= c.MIN_CHARS for x in chunks)
+    assert all(len(x.text) <= c.MAX_CHUNK_CHARS for x in chunks)
+    blob = " ".join(x.text for x in chunks)
+    assert all(f"Sentence number {i:04d} is right here." in blob for i in range(sentences))  # nothing lost
+
+
 # --- chunk_id --------------------------------------------------------------------------------
 def test_chunk_id_is_stable_and_changes_with_every_input():
     base = c.chunk_id("script", 1, "hello")
@@ -168,7 +207,7 @@ def test_build_chunks_respects_size_and_numbers_chunks_from_one(tmp_path):
     chunks = c.build_chunks("script", long_source(tmp_path))
     assert len(chunks) > 3
     assert [x.position for x in chunks] == list(range(1, len(chunks) + 1))
-    assert all(len(x.text) <= c.CHUNK_CHARS for x in chunks)
+    assert all(len(x.text) <= c.MAX_CHUNK_CHARS for x in chunks)
 
 
 def test_build_chunks_is_deterministic_and_ids_are_unique(tmp_path):
@@ -217,7 +256,7 @@ needs_data = pytest.mark.skipif(
 def test_real_screenplay_is_chunked_sensibly():
     chunks = c.build_chunks("script", DATA / "pdf.json")
     assert 90 <= len(chunks) <= 150
-    assert all(len(x.text) <= c.CHUNK_CHARS for x in chunks)
+    assert all(len(x.text) <= c.MAX_CHUNK_CHARS for x in chunks)
     assert all(len(x.text) >= c.MIN_CHARS for x in chunks)  # no tiny chunks in the screenplay
     ends = sum(1 for x in chunks if SENTENCE_END.search(x.text))
     assert ends / len(chunks) >= 0.75  # the old index managed 13%
@@ -227,7 +266,8 @@ def test_real_screenplay_is_chunked_sensibly():
 def test_real_textbook_is_chunked_sensibly_and_all_31_chapters_are_found():
     chunks = c.build_chunks("textbook", DATA / "textbook.json")
     assert 350 <= len(chunks) <= 520
-    assert all(len(x.text) <= c.CHUNK_CHARS for x in chunks)
+    assert all(len(x.text) <= c.MAX_CHUNK_CHARS for x in chunks)
+    assert all(len(x.text) >= c.MIN_CHARS for x in chunks)  # short leftovers are merged back
     numbers = {int(x.chapter.split()[0]) for x in chunks if x.chapter}
     assert numbers == set(range(1, 32))
     ends = sum(1 for x in chunks if SENTENCE_END.search(x.text))
