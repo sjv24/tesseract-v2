@@ -3,5 +3,7 @@
 __pycache__/
 node_modules/
 dist/
+# Copyrighted Stuff
+data/
 # Private study notes (not part of the project)
 notes/
