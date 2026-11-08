@@ -329,3 +329,13 @@ def test_cors_origins_come_from_settings():
 
     cors = next(m for m in application.user_middleware if m.cls.__name__ == "CORSMiddleware")
     assert "http://localhost:5173" in cors.kwargs["allow_origins"]
+
+
+# --- prompt hardening ---------------------------------------------------------
+
+def test_hardening_adds_the_injection_rules_only_when_switched_on(monkeypatch):
+    plain = generator._messages("q", ["chunk"], "base prompt")[0]["content"]
+    assert plain == "base prompt"
+    monkeypatch.setattr(settings, "harden_prompt", True)
+    hardened = generator._messages("q", ["chunk"], "base prompt")[0]["content"]
+    assert hardened.startswith("base prompt") and "untrusted" in hardened and "reveal" in hardened

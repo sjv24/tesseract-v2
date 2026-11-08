@@ -33,7 +33,7 @@ INDEXES = ("v1", "v2")
 SMALL_MODEL = "hf.co/unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M"
 PIPELINE_DEFAULTS = {
     "index_version": "v1", "retrieval_mode": "vector", "rerank_enabled": False,
-    "top_k": 5, "chat_model": "qwen3:8b", "router_model": "qwen3:8b", "strict_prompt": False,
+    "top_k": 5, "chat_model": "qwen3:8b", "router_model": "qwen3:8b", "strict_prompt": False, "harden_prompt": False,
 }
 _FINAL = {"index_version": "v2", "retrieval_mode": "hybrid", "rerank_enabled": True}
 PIPELINES = {
@@ -42,6 +42,7 @@ PIPELINES = {
         "baseline": {},
         "final": _FINAL,
         "final-strict": {**_FINAL, "strict_prompt": True},  # final + the stricter answering rules
+        "final-hardened": {**_FINAL, "harden_prompt": True},  # final + instructions to resist injection
         "final-k3": {**_FINAL, "top_k": 3},  # only the 3 best chunks reach the model
         "final-small": {**_FINAL, "chat_model": SMALL_MODEL, "router_model": SMALL_MODEL},  # a 4B model instead of 8B
     }.items()
@@ -245,11 +246,11 @@ def run_gate(results_path: Path, out_path: Path) -> dict:
     return relevance_gate.cross_check(sorted(rows, key=lambda r: r["id"]))
 
 
-def run_robustness(out_path: Path) -> dict:
+def run_robustness(out_path: Path, pipeline: str = "final") -> dict:
     """Hostile and odd inputs through the whole chatbot, with the final pipeline's settings."""
     from evals import robustness
 
-    apply_pipeline("final")
+    apply_pipeline(pipeline)
     results, started = [], time.time()
     for done, case in enumerate(robustness.CASES, start=1):
         answer = agent.graph.invoke({"question": case["question"]})["answer"]
@@ -341,7 +342,7 @@ def main(argv: list[str] | None = None) -> int:
                 faithfulness=not args.no_faithfulness,
             )
         elif args.mode == "robustness":
-            summary = run_robustness(out_path)
+            summary = run_robustness(out_path, (args.pipelines or ["final"])[0])
         elif args.mode == "gate":
             summary = run_gate(args.input, out_path)
         elif args.mode == "routing":
