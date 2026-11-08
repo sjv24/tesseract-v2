@@ -5,8 +5,6 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 
-ROUTER_MODEL = "qwen3:8b"
-
 Category = Literal["script", "textbook", "comments", "multi"]
 
 SYSTEM_PROMPT = (
@@ -31,7 +29,7 @@ class Route(BaseModel):
 
 def classify(question: str, system_prompt: str = SYSTEM_PROMPT) -> Category:
     response = ollama.chat(
-        model=ROUTER_MODEL,
+        model=settings.router_model,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question},

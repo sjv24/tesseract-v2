@@ -22,5 +22,5 @@ def rerank(question: str, hits: list[dict], top_n: int = 5) -> list[dict]:
     if not hits:
         return []
     scores = list(get_model().rerank(question, [h["text"] for h in hits]))
-    ranked = sorted(zip(hits, scores), key=lambda pair: pair[1], reverse=True)
+    ranked = sorted(zip(hits, scores, strict=True), key=lambda pair: pair[1], reverse=True)
     return [{**hit, "rerank_score": float(score)} for hit, score in ranked[:top_n]]

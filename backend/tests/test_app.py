@@ -1,9 +1,12 @@
 """Tests for the chat backend: index switch, citations, shared client, error handling. No Ollama or Weaviate needed."""
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 from weaviate.exceptions import WeaviateConnectionError
 
 from app.agent import graph as g
+from app.agent.comments_query import CommentsQuery
 from app.core.config import settings
 from app.generation import generator
 from app.main import app
@@ -124,7 +127,7 @@ class FakeClient:
 def test_the_weaviate_connection_is_opened_once_and_reused(monkeypatch):
     made = []
     monkeypatch.setattr(store, "_client", None)
-    monkeypatch.setattr(store.weaviate, "connect_to_local", lambda: made.append(FakeClient()) or made[-1])
+    monkeypatch.setattr(store.weaviate, "connect_to_local", lambda **kw: made.append(FakeClient()) or made[-1])
     assert store.get_client() is store.get_client()
     assert len(made) == 1
 
@@ -132,7 +135,7 @@ def test_the_weaviate_connection_is_opened_once_and_reused(monkeypatch):
 def test_a_dropped_connection_is_reopened(monkeypatch):
     made = []
     monkeypatch.setattr(store, "_client", None)
-    monkeypatch.setattr(store.weaviate, "connect_to_local", lambda: made.append(FakeClient()) or made[-1])
+    monkeypatch.setattr(store.weaviate, "connect_to_local", lambda **kw: made.append(FakeClient()) or made[-1])
     first = store.get_client()
     first.connected = False
     assert store.get_client() is made[1] and made[1] is not first
@@ -141,7 +144,7 @@ def test_a_dropped_connection_is_reopened(monkeypatch):
 def test_close_client_closes_it_and_the_next_call_reconnects(monkeypatch):
     made = []
     monkeypatch.setattr(store, "_client", None)
-    monkeypatch.setattr(store.weaviate, "connect_to_local", lambda: made.append(FakeClient()) or made[-1])
+    monkeypatch.setattr(store.weaviate, "connect_to_local", lambda **kw: made.append(FakeClient()) or made[-1])
     first = store.get_client()
     store.close_client()
     assert first.closed
@@ -222,3 +225,107 @@ def test_rerank_puts_the_highest_scoring_chunk_first_and_keeps_only_top_n(monkey
     assert [h["text"] for h in ranked] == ["b", "c"]
     assert ranked[0]["rerank_score"] == 0.9
     assert rerank_module.rerank("q", [], top_n=2) == []
+
+
+# --- streaming ------------------------------------------------------------------
+
+def parse_sse(text):
+    """Turn the raw event stream back into [(event, data), ...]."""
+    events = []
+    for block in text.strip().split("\n\n"):
+        lines = block.split("\n")
+        events.append((lines[0].removeprefix("event: "), json.loads(lines[1].removeprefix("data: "))))
+    return events
+
+
+@pytest.fixture
+def stream_client(monkeypatch):
+    from app.api import chat as chat_module
+
+    monkeypatch.setattr(chat_module, "classify", lambda question: "script")
+    monkeypatch.setattr(g, "search", lambda collection, question, **kw: [fake_hit(1), fake_hit(2)])
+    monkeypatch.setattr(chat_module, "generate_stream", lambda question, chunks, prompt: iter(["Ninety ", "percent."]))
+    return TestClient(app)
+
+
+def test_the_stream_sends_sources_first_then_the_answer_in_pieces_then_done(stream_client):
+    response = stream_client.post("/chat/stream", json={"question": "What is TARS's honesty setting?"})
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = parse_sse(response.text)
+    assert [name for name, _ in events] == ["meta", "token", "token", "done"]
+    assert events[0][1]["category"] == "script" and len(events[0][1]["citations"]) == 2
+    assert "".join(data["text"] for name, data in events if name == "token") == "Ninety percent."
+    assert events[-1][1]["seconds"] >= 0
+
+
+def test_a_computed_counting_answer_is_sent_whole_without_calling_the_model(stream_client, monkeypatch):
+    from app.api import chat as chat_module
+
+    monkeypatch.setattr(chat_module, "classify", lambda question: "comments")
+    monkeypatch.setattr(g, "understand", lambda q: CommentsQuery(kind="stats", metric="count"))
+    monkeypatch.setattr(g, "load_comments", lambda: [{"text": "a", "sentiment": [], "aspects": []}])
+    monkeypatch.setattr(chat_module, "generate_stream", lambda *a: pytest.fail("no model call for a counting answer"))
+    events = parse_sse(stream_client.post("/chat/stream", json={"question": "How many comments are there?"}).text)
+    assert [name for name, _ in events] == ["meta", "token", "done"]
+    assert "1 comments" in events[1][1]["text"]
+
+
+def test_streaming_reports_a_service_that_is_down_before_the_stream_starts(stream_client, monkeypatch):
+    from app.api import chat as chat_module
+
+    def down(question):
+        raise ConnectionError("refused")
+
+    monkeypatch.setattr(chat_module, "classify", down)
+    response = stream_client.post("/chat/stream", json={"question": "hi"})
+    assert response.status_code == 503 and "Ollama" in response.json()["detail"]
+
+
+def test_a_failure_in_the_middle_of_the_stream_arrives_as_an_error_event(stream_client, monkeypatch):
+    from app.api import chat as chat_module
+
+    def breaks(question, chunks, prompt):
+        yield "Ninety "
+        raise ConnectionError("model died")
+
+    monkeypatch.setattr(chat_module, "generate_stream", breaks)
+    events = parse_sse(stream_client.post("/chat/stream", json={"question": "hi"}).text)
+    assert [name for name, _ in events] == ["meta", "token", "error"]
+
+
+def test_each_chat_logs_one_json_line(client, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="tesseract"):
+        client.post("/chat", json={"question": "Who is TARS?"})
+    line = json.loads(next(r.message for r in caplog.records if r.name == "tesseract"))
+    assert line["event"] == "chat" and line["category"] == "script" and line["chunk_ids"] == ["id1", "id2"]
+    assert line["question"] == "Who is TARS?" and line["streamed"] is False
+
+
+def test_generate_stream_yields_the_pieces_the_model_sends(monkeypatch):
+    sent = {}
+
+    def fake_chat(**kwargs):
+        sent.update(kwargs)
+        return iter([{"message": {"content": "He"}}, {"message": {"content": "llo"}}])
+
+    monkeypatch.setattr(generator.ollama, "chat", fake_chat)
+    assert list(generator.generate_stream("q", ["a"])) == ["He", "llo"]
+    assert sent["stream"] is True and sent["options"]["num_ctx"] == settings.ollama_num_ctx
+
+
+def test_the_weaviate_address_comes_from_settings(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(store, "_client", None)
+    monkeypatch.setattr(store.weaviate, "connect_to_local", lambda **kw: seen.update(kw) or FakeClient())
+    monkeypatch.setattr(settings, "weaviate_host", "weaviate")
+    store.get_client()
+    assert seen == {"host": "weaviate", "port": 8080, "grpc_port": 50051}
+
+
+def test_cors_origins_come_from_settings():
+    from app.main import app as application
+
+    cors = next(m for m in application.user_middleware if m.cls.__name__ == "CORSMiddleware")
+    assert "http://localhost:5173" in cors.kwargs["allow_origins"]

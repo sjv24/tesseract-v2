@@ -2,9 +2,11 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from app.agent.comments_query import run_stats, understand
 from app.agent.router import Category, classify
 from app.core.config import settings
 from app.generation.generator import generate
+from app.retrieval.comments_stats import load_comments
 from app.retrieval.search import search
 
 # the structure-aware index; the comments have no v2 and always use the original collection
@@ -57,6 +59,7 @@ class AgentState(TypedDict, total=False):
     category: Category
     answer: str
     citations: list[dict]
+    contexts: list[str]  # the exact excerpts the model was given
 
 
 def collection_name(source_name: str) -> str:
@@ -70,12 +73,11 @@ def classify_node(state: AgentState) -> dict:
     return {"category": classify(state["question"])}
 
 
-TOP_K = 5
 # hybrid search and reranking were measured on these two sources only (the comments have no labelled evidence)
 IMPROVED_RETRIEVAL_SOURCES = {"script", "textbook"}
 
 
-def _retrieve(source_name: str, question: str) -> list[dict]:
+def _retrieve(source_name: str, question: str, sentiment: str | None = None) -> list[dict]:
     source = SOURCES[source_name]
     collection = collection_name(source_name)
     improved = source_name in IMPROVED_RETRIEVAL_SOURCES
@@ -83,15 +85,16 @@ def _retrieve(source_name: str, question: str) -> list[dict]:
     hits = search(
         collection,
         question,
-        k=settings.rerank_candidates if rerank_on else TOP_K,
+        k=settings.rerank_candidates if rerank_on else settings.top_k,
         embedder=source["embedder"],
         mode=settings.retrieval_mode if improved else "vector",
         alpha=settings.hybrid_alpha,
+        sentiment=sentiment,
     )
     if rerank_on:
         from app.retrieval.rerank import rerank  # imported here so the model only loads when reranking is switched on
 
-        hits = rerank(question, hits, top_n=TOP_K)
+        hits = rerank(question, hits, top_n=settings.top_k)
     return [{**hit, "source": source_name, "collection": collection} for hit in hits]
 
 
@@ -114,29 +117,50 @@ def _citation(hit: dict) -> dict:
     }
 
 
-def _single_source_agent(source_name: str, state: AgentState) -> dict:
-    hits = _retrieve(source_name, state["question"])
-    answer = generate(state["question"], [h["text"] for h in hits], SOURCES[source_name]["prompt"])
-    return {"answer": answer, "citations": [_citation(h) for h in hits]}
+def prepare(category: str, question: str) -> dict:
+    """Everything needed to answer, before any text is generated: the instructions, the excerpts and the citations.
+    Counting questions about the comments come back with `direct_answer` already computed (no model call needed).
+    Streaming uses this to show citations first and then stream the generation; the normal agents use it too."""
+    if category == "multi":
+        hits = [hit for source_name in SOURCES for hit in _retrieve(source_name, question)]
+        chunks = [f"[{h['source']}] {h['text']}" for h in hits]
+        return {"system_prompt": MULTI_PROMPT, "chunks": chunks, "citations": [_citation(h) for h in hits]}
+
+    sentiment = None
+    if category == "comments":
+        try:
+            query = understand(question)
+        except ValueError:  # the model returned something that is not a valid query: fall back to plain search
+            query = None
+        if query is not None and query.kind == "stats":
+            return {"direct_answer": run_stats(query, load_comments()), "chunks": [], "citations": []}
+        sentiment = query.sentiment if query else None
+
+    hits = _retrieve(category, question, sentiment=sentiment)
+    return {"system_prompt": SOURCES[category]["prompt"], "chunks": [h["text"] for h in hits], "citations": [_citation(h) for h in hits]}
+
+
+def _agent(category: str, state: AgentState) -> dict:
+    plan = prepare(category, state["question"])
+    answer = plan.get("direct_answer") or generate(state["question"], plan["chunks"], plan["system_prompt"])
+    return {"answer": answer, "citations": plan["citations"], "contexts": plan["chunks"]}
 
 
 def script_agent(state: AgentState) -> dict:
-    return _single_source_agent("script", state)
+    return _agent("script", state)
 
 
 def textbook_agent(state: AgentState) -> dict:
-    return _single_source_agent("textbook", state)
+    return _agent("textbook", state)
 
 
 def comments_agent(state: AgentState) -> dict:
-    return _single_source_agent("comments", state)
+    """Counting questions are computed over all comments; opinion questions search them (by tone when one is implied)."""
+    return _agent("comments", state)
 
 
 def multi_agent(state: AgentState) -> dict:
-    question = state["question"]
-    hits = [hit for source_name in SOURCES for hit in _retrieve(source_name, question)]
-    chunks = [f"[{h['source']}] {h['text']}" for h in hits]
-    return {"answer": generate(question, chunks, MULTI_PROMPT), "citations": [_citation(h) for h in hits]}
+    return _agent("multi", state)
 
 
 def route(state: AgentState) -> str:

@@ -1,6 +1,6 @@
 import ollama
 from openai import OpenAI
-from weaviate.classes.query import MetadataQuery
+from weaviate.classes.query import Filter, MetadataQuery
 
 from app.core.config import settings
 from app.retrieval.store import get_client
@@ -31,13 +31,16 @@ def search(
     embedder: str = "ollama",
     mode: str = "vector",
     alpha: float = 0.5,
+    sentiment: str | None = None,
 ) -> list[dict]:
     """Top-k chunks. mode="vector" is pure meaning-based search; mode="hybrid" mixes it with keyword (BM25) search,
     where alpha=1 is all vector and alpha=0 is all keyword.
     Fields a collection does not have (the old index has no section/page) come back as None,
-    and chunk_id falls back to the object's UUID."""
+    and chunk_id falls back to the object's UUID.
+    sentiment="Negative" (comments only) searches just the comments carrying that label."""
     vector = EMBEDDERS[embedder](question)
     collection = get_client().collections.use(collection_name)
+    filters = Filter.by_property("sentiment").contains_any([sentiment.lower()]) if sentiment else None
     if mode == "hybrid":
         result = collection.query.hybrid(
             query=question,
@@ -45,12 +48,14 @@ def search(
             alpha=alpha,
             query_properties=["text"],
             limit=k,
+            filters=filters,
             return_metadata=MetadataQuery(score=True),
         )
     else:
         result = collection.query.near_vector(
             near_vector=vector,
             limit=k,
+            filters=filters,
             return_metadata=MetadataQuery(distance=True),
         )
     return [
@@ -61,6 +66,7 @@ def search(
             "chunk_id": o.properties.get("chunk_id") or str(o.uuid),
             "section": o.properties.get("section"),
             "page": o.properties.get("page"),
+            "sentiment": o.properties.get("sentiment"),
         }
         for o in result.objects
     ]
