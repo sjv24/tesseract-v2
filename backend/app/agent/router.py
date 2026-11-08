@@ -3,6 +3,8 @@ from typing import Literal
 import ollama
 from pydantic import BaseModel
 
+from app.core.config import settings
+
 ROUTER_MODEL = "qwen3:8b"
 
 Category = Literal["script", "textbook", "comments", "multi"]
@@ -30,7 +32,8 @@ def classify(question: str) -> Category:
             {"role": "user", "content": question},
         ],
         think=False,
-        options={"temperature": 0},
+        # same num_ctx as the generator: a different value makes Ollama reload the model between the two calls
+        options={"temperature": 0, "num_ctx": settings.ollama_num_ctx},
         format=Route.model_json_schema(),
     )
     return Route.model_validate_json(response["message"]["content"]).category

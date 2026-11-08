@@ -1,5 +1,7 @@
 import ollama
 
+from app.core.config import settings
+
 CHAT_MODEL = "qwen3:8b"
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -25,6 +27,6 @@ def generate(
             {"role": "user", "content": build_prompt(question, chunks)},
         ],
         think=False,
-        options={"temperature": 0.2},
+        options={"temperature": 0.2, "num_ctx": settings.ollama_num_ctx},
     )
     return response["message"]["content"]
