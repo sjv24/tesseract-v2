@@ -74,7 +74,7 @@ def upsert_chunks(collection, chunks: list[Chunk], vectors: list[list[float]]) -
     if len(chunks) != len(vectors):
         raise ValueError(f"{len(chunks)} chunks but {len(vectors)} vectors")
     with collection.batch.fixed_size(batch_size=BATCH_SIZE) as batch:
-        for chunk, vector in zip(chunks, vectors):
+        for chunk, vector in zip(chunks, vectors, strict=True):
             batch.add_object(properties=chunk_properties(chunk), uuid=chunk_uuid(chunk.id), vector=vector)
     failed = collection.batch.failed_objects
     if failed:

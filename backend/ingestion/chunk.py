@@ -168,7 +168,7 @@ def merge_small_tail(pieces: list[Document], joiner: str) -> list[Document]:
 
 
 def chunk_id(source: str, position: int, text: str) -> str:
-    raw = f"{source}|{position}|{text}".encode("utf-8")
+    raw = f"{source}|{position}|{text}".encode()
     return hashlib.sha1(raw).hexdigest()[:16]
 
 
