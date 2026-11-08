@@ -52,6 +52,13 @@ def test_no_contexts_means_faithfulness_is_not_judged():
     assert result["a"]["faithful"] is None and len(ask.asked) == 1
 
 
+def test_correctness_only_mode_skips_the_slow_faithfulness_check():
+    ask = fake_ask(["yes"])
+    result = judge.judge_record({"a": side()}, "q", ["e"], ["a"], ask, faithfulness=False)
+    assert result["a"]["correct"] == "yes" and result["a"]["faithful"] is None
+    assert len(ask.asked) == 1
+
+
 def test_summary_counts_each_verdict():
     judged = [
         {"a": {"correct": "yes", "faithful": "yes"}},

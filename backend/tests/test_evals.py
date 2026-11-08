@@ -31,6 +31,8 @@ def test_hit_at_k_and_mrr():
 @pytest.mark.parametrize("answer,expected", [
     ("The excerpts do not provide information about that.", True),
     ("I don't know.", True),
+    ("The question cannot be answered based on the provided excerpts.", True),
+    ("The excerpts do not mention Dr Mann's first name.", True),
     ("TARS's honesty setting is ninety percent.", False),
 ])
 def test_refusal_detection(answer, expected):
@@ -106,7 +108,8 @@ def test_equal_text_only_counts_hits_inside_the_reference_text_budget():
 
 def test_summarize_full_counts_refusals_routing_and_latency():
     def rec(i, answerable, gold, route, refused, seconds):
-        side = {"answer": "", "seconds": seconds, "refused": refused, "citations": []}
+        # refusals are scored from the answer text, so the fake answer says "I don't know" when it should count as one
+        side = {"answer": "I don't know." if refused else "An answer.", "seconds": seconds, "refused": refused, "citations": []}
         return {"id": i, "type": "x", "gold_route": gold, "answerable": answerable, "route": route, "route_seconds": 2.0, "v1": side, "v2": side}
 
     records = [

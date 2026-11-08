@@ -82,6 +82,17 @@ def test_a_stats_question_is_computed_not_searched(monkeypatch):
     assert "2 comments" in result["answer"] and result["citations"] == []
 
 
+def test_a_counting_query_with_no_topic_or_tone_is_only_trusted_when_the_question_mentions_comments(monkeypatch):
+    monkeypatch.setattr(g, "understand", lambda q: CommentsQuery(kind="stats", metric="count"))
+    monkeypatch.setattr(g, "load_comments", lambda: ROWS)
+    monkeypatch.setattr(g, "search", lambda *a, **kw: [hit()])
+    monkeypatch.setattr(g, "generate", lambda *a, **kw: "I don't know.")
+    assert g.comments_agent({"question": "How tall is Matthew McConaughey?"})["answer"] == "I don't know."
+    monkeypatch.setattr(g, "understand", lambda q: CommentsQuery(kind="stats", metric=None))  # the model said "stats" but no metric
+    assert g.comments_agent({"question": "What is the capital of France?"})["answer"] == "I don't know."
+    assert "5 comments" in g.comments_agent({"question": "How many comments are there?"})["answer"]
+
+
 def test_an_opinion_question_with_a_tone_searches_only_comments_with_that_tone(monkeypatch):
     seen = {}
     monkeypatch.setattr(g, "understand", lambda q: CommentsQuery(kind="opinion", sentiment="Negative"))

@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     rerank_candidates: int = 30
     # chunks passed to the model per source (fewer is faster; the reranker makes a small number more reliable)
     top_k: int = 5
+    # extra answering rules (copy names, numbers and key phrases exactly as the excerpts word them); off until measured
+    strict_prompt: bool = False
     # the language models; the router and the comments-question parser share router_model
     chat_model: str = "qwen3:8b"
     router_model: str = "qwen3:8b"

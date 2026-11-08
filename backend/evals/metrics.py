@@ -6,6 +6,9 @@ REFUSAL_PHRASES = (
     "don't know", "do not know", "not contain", "do not provide", "does not provide", "doesn't provide",
     "not provided", "no information", "cannot answer", "can't answer", "not mentioned", "not covered",
     "do not cover", "does not cover", "not specified",
+    # added after reading the answers of the first end-to-end run, which used these wordings and were missed
+    "cannot be answered", "can't be answered", "do not mention", "does not mention", "not enough information",
+    "unable to answer", "not explicitly mentioned",
 )
 
 

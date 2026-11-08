@@ -117,6 +117,23 @@ def _citation(hit: dict) -> dict:
     }
 
 
+STRICT_RULES = (
+    " Answer in one to three sentences. Take names, numbers and key phrases exactly as the excerpts word them, "
+    "do not replace them with your own wording, and do not add facts that are not in the excerpts. "
+    "If the excerpts only partly answer the question, give the part they support."
+)
+
+
+def with_rules(system_prompt: str) -> str:
+    return system_prompt + STRICT_RULES if settings.strict_prompt else system_prompt
+
+
+def is_unfiltered_total(query) -> bool:
+    """A counting query with no topic and no tone just asks for the number of all comments."""
+    # a missing metric also ends up as a plain count (the last branch of run_stats)
+    return query.kind == "stats" and query.metric in (None, "count", "share") and not query.keyword and not query.sentiment
+
+
 def prepare(category: str, question: str) -> dict:
     """Everything needed to answer, before any text is generated: the instructions, the excerpts and the citations.
     Counting questions about the comments come back with `direct_answer` already computed (no model call needed).
@@ -124,7 +141,7 @@ def prepare(category: str, question: str) -> dict:
     if category == "multi":
         hits = [hit for source_name in SOURCES for hit in _retrieve(source_name, question)]
         chunks = [f"[{h['source']}] {h['text']}" for h in hits]
-        return {"system_prompt": MULTI_PROMPT, "chunks": chunks, "citations": [_citation(h) for h in hits]}
+        return {"system_prompt": with_rules(MULTI_PROMPT), "chunks": chunks, "citations": [_citation(h) for h in hits]}
 
     sentiment = None
     if category == "comments":
@@ -132,12 +149,14 @@ def prepare(category: str, question: str) -> dict:
             query = understand(question)
         except ValueError:  # the model returned something that is not a valid query: fall back to plain search
             query = None
+        if query is not None and is_unfiltered_total(query) and "comment" not in question.lower():
+            query = None  # not really a counting question: "41,358 comments" would be a nonsense answer to it
         if query is not None and query.kind == "stats":
             return {"direct_answer": run_stats(query, load_comments()), "chunks": [], "citations": []}
         sentiment = query.sentiment if query else None
 
     hits = _retrieve(category, question, sentiment=sentiment)
-    return {"system_prompt": SOURCES[category]["prompt"], "chunks": [h["text"] for h in hits], "citations": [_citation(h) for h in hits]}
+    return {"system_prompt": with_rules(SOURCES[category]["prompt"]), "chunks": [h["text"] for h in hits], "citations": [_citation(h) for h in hits]}
 
 
 def _agent(category: str, state: AgentState) -> dict:

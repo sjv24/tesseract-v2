@@ -1,7 +1,7 @@
 # Evaluation log
 
 Every change to the retrieval pipeline gets a row here, measured on the same golden set
-(`backend/evals/dataset.jsonl`, 100 questions). Numbers are from this project's own runs on a laptop CPU
+(`backend/evals/dataset.jsonl`, 106 questions). Numbers are from this project's own runs on a laptop CPU
 (AMD Radeon 780M integrated graphics, so `qwen3:8b` runs on the CPU).
 
 ## How to reproduce
@@ -92,9 +92,120 @@ What changed: *hybrid* mixes meaning-based search with exact keyword matching (B
   script and textbook only; the comments source has no labelled evidence, so it stays on plain vector search).
   Answer-level effects (faithfulness, latency with reranking) have not been run yet.
 
+## Row 5: the comments source (counting by code, tone filter)
+
+What changed: before, "how many comments mention Tom?" was answered by reading the 5 most similar comments, which cannot
+count anything. Now a small model call turns the question into a structured query (kind, metric, tone, keyword) and
+ordinary code runs it over all 41,358 comments, stating what it counted. Opinion questions ("what do viewers dislike about
+the ending?") can be limited to comments with the matching tone label.
+
+| Measure | Before | After |
+|---|---|---|
+| Counting question turned into the right query, golden set (tuned on this set) | not possible | 100% |
+| Same, separate hold-out set of 20 questions | not possible | 90% (7 of 8 on the questions written after tuning) |
+| Top-5 comments carrying the wanted tone | about 60% | 100% |
+
+- Caveat: the golden-set figure is not independent, because the prompt examples were chosen while looking at it.
+  The hold-out figure is the one to quote, and it is small.
+- Tone labels in the data are model-generated, so "100% match" means the filter matches the labels, not that a human
+  agrees with each label.
+
+## Row 6: end to end, baseline against final (first run)
+
+Setups: **baseline** = original v1 index, vector search, no reranking. **final** = v2 index, hybrid search, reranking.
+Same router and model (`qwen3:8b`) for both. 106 questions, 0 errors, laptop CPU.
+
+| | baseline | final |
+|---|---|---|
+| Routing accuracy | 92.1% | 92.1% |
+| Correct refusals (unanswerable, 16 questions) | 62.5% (10 of 16) | 69% (11 of 16) |
+| False refusals (answerable, 90 questions) | 8.9% (8 of 90) | 6.7% (6 of 90) |
+| Answer time p50 / p95 | 14.2 s / 48.2 s | 39.3 s / 125.3 s |
+
+The refusal rows were re-scored after the run with a longer phrase list (the first scoring missed "cannot be answered"
+and "does not mention", which gave 56% and 62%). Latency is the real cost of v2: 5 chunks of about 1,600 characters is
+far more text to read than 5 chunks of about 245 characters, and on a CPU reading time is most of the answer time.
+
+Judged answer quality, 49 questions with evidence (judge = the same `qwen3:8b`, so it may favour its own style):
+
+| | baseline | final |
+|---|---|---|
+| Correct | 59% | 63% |
+| Partly correct | 16% | 14% |
+| Wrong or refused | 24% | 22% |
+| Faithful to the excerpts (of answers not refused) | 95% | 100% |
+
+The correctness gap is two questions out of 49 and is within noise. Faithfulness is the clearer signal.
+
+### What the failures were
+
+Reading the 18 non-"yes" final answers against the saved chunks and judge reasons:
+
+- **The judge was too strict** on 5 answers (q007, q008, q010, q017, q048): the answer was fuller than the short
+  evidence quote and the judge marked the extra detail wrong. The judge prompt now says extra detail is fine unless it
+  contradicts the evidence. Both pipelines are re-judged with the new prompt.
+- **Real misreads** with the right passage in the prompt: q047, q062 ("feet deep" for "ankle deep") and q065.
+- **Routing slips** between script and textbook: q051 and q055 were sent to the screenplay when the answer is in the book.
+- **Retrieval misses** (evidence not in the 5 chunks): q007, q051, q055.
+- **A bug I introduced in Row 5:** off-topic questions ("What is the capital of France?", "What is the weather in Dubai
+  today?", "Who is the current president?") were routed to the comments source, where the counting path answered
+  "41,358 comments (out of 41,358 comments in all)". Five of the 16 unanswerable questions were failing this way.
+- **A measuring problem:** the refusal phrase list missed some wordings (see above).
+
+## Row 7: fixes from the failure analysis
+
+### 7. An "out of scope" route (tried, reverted)
+
+Idea: add a fifth router category, `none`, for questions unrelated to the film ("What is the capital of France?"), answered
+with "I don't know" without searching or calling the writing model. It fixed the 3 off-topic questions in the golden
+set (100% of the `none` questions routed correctly, including 4 fresh ones), but it also captured real science
+questions: "What is the Riemann tensor?", "Who measured the mass of the black hole at the centre of the Milky Way?"
+and 3 more (plus one script question). Textbook routing fell from about 92% to 65-70% and overall golden routing from 92%
+to 88%, even after a second prompt that said never to use `none` for physics. **That trades 3 correct refusals for about 6 false
+refusals, so it was reverted.** An 8B router is too eager to use a "nothing matches" category. What stays from this
+investigation: the guard below, and the relevance-gate idea (refuse when the best retrieved chunk scores poorly) in 7b.
+
+The guard: a counting query with no topic and no tone was answered with the total number of comments for any question the
+router sent to the comments source, which is how "What is the weather in Dubai today?" got "41,358 comments (out of 41,358
+comments in all)". Such a query is now only trusted when the question actually mentions comments; otherwise the question
+falls back to a normal search, where the model can say it does not know.
+
+The guard first missed three of five cases (the model had answered "stats" with no metric, which fell through to the
+same plain count); that was fixed and re-checked by hand on "weather in Dubai", "capital of France" and "current
+president", which now all answer "I don't know".
+
+### 7b. A relevance gate (measured, not adopted)
+
+Idea: refuse without asking the model when the best reranker score is low. The saved run was analysed (reranker scores
+re-computed for the 62 questions routed to the screenplay or textbook, 8 of them unanswerable; threshold chosen on one half
+of the questions and checked on the other).
+
+- **The model already refuses all 8 unanswerable questions** that reach the screenplay or textbook. A gate has nothing to
+  add there, and the procedure correctly picked no threshold in either half.
+- **The reranker score does not separate the two groups anyway.** Answerable questions q051, q039, q054 and q019 score between
+  -11.0 and -6.9, in the same range as five of the eight unanswerable ones (-11.1 to -7.0), so a threshold that
+  catches those would refuse real questions.
+- So the correct-refusal failures were the comments-source bug above and a measuring problem, not weak refusal behaviour.
+
+### 7a. Retrieval experiments (retrieval only, 46 questions; no change kept)
+
+| Setup | hit@5 | MRR |
+|---|---|---|
+| v2 hybrid + rerank (current) | 82.6% | 0.612 |
+| search script and textbook together, reranker picks the best 5 | 78.3% | 0.573 |
+| rerank 50 candidates instead of 30 | 82.6% | 0.610 |
+
+- **Searching both books at once is worse.** The reranker sometimes lets a textbook passage push out the right
+  screenplay scene (and the other way round). The router, imperfect as it is, adds information. Not adopted.
+- **More candidates change nothing.** The right chunk is already inside the first 30 whenever it can be found. Not adopted.
+- **Most of the remaining misses are narrow labels, not bad retrieval.** Looking at the top chunks for "Who is TARS?",
+  "Who is Dr. Mann?" and "Who is CASE?": the evidence quote is one specific line ("a massive, sarcastic robot"),
+  while the chunks returned are other good scenes about the same character. hit@5 asks "did you find this exact line",
+  so it understates retrieval for broad "who is" questions. I therefore stopped tuning retrieval: the remaining
+  headroom is mostly in how the metric is defined.
+
 ## Open items
 
-- Answer quality is not measured yet (refusals are matched by phrase; nothing judges whether an answer is correct).
 - q058 (box office) and q059 (Dunkirk) are labelled unanswerable, but the comments mention sales and Nolan, so those two
-  labels are debatable.
-- Run `--mode full` again with `v2 + hybrid + rerank + new router` to get end-to-end numbers.
+  labels are debatable. q003 and q041 may also be partly answerable.
+- The judge is the same model that wrote the answers. A spot check by hand of the disagreements is still worth doing.

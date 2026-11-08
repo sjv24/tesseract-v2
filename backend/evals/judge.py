@@ -19,6 +19,7 @@ import ollama
 from pydantic import BaseModel
 
 from app.core.config import settings
+from evals.metrics import is_refusal
 
 JUDGE_MODEL = "qwen3:8b"  # fixed, so judgements stay comparable when the chatbot's own model changes
 
@@ -31,8 +32,11 @@ class Verdict(BaseModel):
 CORRECTNESS_PROMPT = (
     "You grade an answer to a question about the film Interstellar. You are given the QUESTION, a passage of EVIDENCE "
     "that is known to contain the right answer, and the ANSWER to grade.\n"
-    "Reply with a one-sentence reason, then a verdict: 'yes' if the answer gives the information the evidence contains, "
-    "'partly' if it is related and only partly right or incomplete, 'no' if it is wrong, off topic or says it does not know."
+    "The evidence is only a short quote, so the answer may legitimately say MORE than the evidence does: extra detail "
+    "is fine as long as it does not contradict the evidence. Judge whether the answer contains the key fact(s) of the evidence.\n"
+    "Reply with a one-sentence reason, then a verdict: 'yes' if the answer gives the key information the evidence contains "
+    "and nothing in it contradicts the evidence, 'partly' if it is related and only partly right or leaves out part of "
+    "the key information, 'no' if it contradicts the evidence, is off topic or says it does not know."
 )
 
 FAITHFULNESS_PROMPT = (
@@ -64,17 +68,18 @@ def ask_judge(system_prompt: str, message: str) -> Verdict:
     return Verdict.model_validate_json(response["message"]["content"])
 
 
-def judge_record(record: dict, question: str, evidence: list[str], pipelines: list[str], ask: Callable = ask_judge) -> dict:
+def judge_record(record: dict, question: str, evidence: list[str], pipelines: list[str], ask: Callable = ask_judge,
+                 faithfulness: bool = True) -> dict:
     """Judge both pipelines' answers for one question. A refusal is 'no' for correctness without asking the judge."""
     out = {}
     for name in pipelines:
         side = record[name]
-        if side["refused"] or not side["answer"].strip():
+        if is_refusal(side["answer"]) or not side["answer"].strip():
             out[name] = {"correct": "no", "correct_reason": "the answer refused or was empty", "faithful": None}
             continue
         correct = ask(CORRECTNESS_PROMPT, correctness_message(question, side["answer"], evidence))
         entry = {"correct": correct.verdict, "correct_reason": correct.reason, "faithful": None}
-        if side.get("contexts"):
+        if faithfulness and side.get("contexts"):
             faithful = ask(FAITHFULNESS_PROMPT, faithfulness_message(side["answer"], side["contexts"]))
             entry.update(faithful=faithful.verdict, faithful_reason=faithful.reason)
         out[name] = entry
@@ -96,7 +101,8 @@ def summarize_judgements(judged: list[dict], pipelines: list[str]) -> dict:
     return summary
 
 
-def run_judge(results_path: Path, dataset: list[dict], out_path: Path, progress, ask: Callable = ask_judge) -> dict:
+def run_judge(results_path: Path, dataset: list[dict], out_path: Path, progress, ask: Callable = ask_judge,
+              faithfulness: bool = True) -> dict:
     by_id = {q["id"]: q for q in dataset}
     records = [json.loads(line) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()]
     records = [r for r in records if "error" not in r and by_id.get(r["id"], {}).get("gold_evidence")]
@@ -105,7 +111,7 @@ def run_judge(results_path: Path, dataset: list[dict], out_path: Path, progress,
     with out_path.open("w", encoding="utf-8") as out:
         for done, record in enumerate(records, start=1):
             q = by_id[record["id"]]
-            verdicts = judge_record(record, q["question"], q["gold_evidence"], pipelines, ask)
+            verdicts = judge_record(record, q["question"], q["gold_evidence"], pipelines, ask, faithfulness)
             judged.append(verdicts)
             out.write(json.dumps({"id": record["id"], "question": q["question"], **verdicts}, ensure_ascii=False) + "\n")
             out.flush()

@@ -33,7 +33,7 @@ INDEXES = ("v1", "v2")
 SMALL_MODEL = "hf.co/unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M"
 PIPELINE_DEFAULTS = {
     "index_version": "v1", "retrieval_mode": "vector", "rerank_enabled": False,
-    "top_k": 5, "chat_model": "qwen3:8b", "router_model": "qwen3:8b",
+    "top_k": 5, "chat_model": "qwen3:8b", "router_model": "qwen3:8b", "strict_prompt": False,
 }
 _FINAL = {"index_version": "v2", "retrieval_mode": "hybrid", "rerank_enabled": True}
 PIPELINES = {
@@ -41,6 +41,7 @@ PIPELINES = {
     for name, overrides in {
         "baseline": {},
         "final": _FINAL,
+        "final-strict": {**_FINAL, "strict_prompt": True},  # final + the stricter answering rules
         "final-k3": {**_FINAL, "top_k": 3},  # only the 3 best chunks reach the model
         "final-small": {**_FINAL, "chat_model": SMALL_MODEL, "router_model": SMALL_MODEL},  # a 4B model instead of 8B
     }.items()
@@ -94,17 +95,21 @@ RETRIEVAL_CONFIGS = {
     "v2 vector + rerank": {"index": "v2", "k": 5, "fetch": 30, "rerank": True},
     "v1 hybrid + rerank": {"index": "v1", "k": 5, "fetch": 30, "mode": "hybrid", "alpha": 0.5, "rerank": True},
     "v2 hybrid + rerank": {"index": "v2", "k": 5, "fetch": 30, "mode": "hybrid", "alpha": 0.75, "rerank": True},
+    # the routing choice between script and textbook is ignored: both are searched and the reranker picks the best five
+    "v2 hybrid + rerank, both sources": {"index": "v2", "k": 5, "fetch": 20, "mode": "hybrid", "alpha": 0.75, "rerank": True, "both": True},
+    "v2 hybrid + rerank, 50 candidates": {"index": "v2", "k": 5, "fetch": 50, "mode": "hybrid", "alpha": 0.75, "rerank": True},
 }
 EQUAL_TEXT = ("v1 vector (40 chunks)", "v2 vector")  # (list to cut down, reference whose text size sets the budget)
 
 
 def retrieve(config: dict, question: str, source_name: str) -> list[dict]:
     use_index(config["index"])
-    source = agent.SOURCES[source_name]
-    hits = agent.search(
-        agent.collection_name(source_name), question, k=config.get("fetch", config["k"]),
-        embedder=source["embedder"], mode=config.get("mode", "vector"), alpha=config.get("alpha", 0.5),
-    )
+    hits = []
+    for name in ("script", "textbook") if config.get("both") else (source_name,):
+        hits += agent.search(
+            agent.collection_name(name), question, k=config.get("fetch", config["k"]),
+            embedder=agent.SOURCES[name]["embedder"], mode=config.get("mode", "vector"), alpha=config.get("alpha", 0.5),
+        )
     if config.get("rerank"):
         from app.retrieval.rerank import rerank  # imported here so the other modes do not need the reranker installed
         hits = rerank(question, hits, top_n=config["k"])
@@ -219,6 +224,41 @@ def run_full(questions: list[dict], out_path: Path, pipelines: list[str] | None 
     return summarize_full(records, pipelines)
 
 
+def run_gate(results_path: Path, out_path: Path) -> dict:
+    """Relevance gate analysis (see evals/relevance_gate.py): needs Weaviate, not the answer model."""
+    from evals import relevance_gate
+
+    apply_pipeline("final")
+    records = [json.loads(line) for line in results_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    by_id = {q["id"]: q for q in load_dataset()}
+    rows, started = [], time.time()
+    searchable = [r for r in records if "error" not in r and route_of(r, "final") in ("script", "textbook")]
+    for done, record in enumerate(searchable, start=1):
+        question = by_id[record["id"]]["question"]
+        hits = agent._retrieve(route_of(record, "final"), question)
+        rows.append({
+            "id": record["id"], "score": max(h["rerank_score"] for h in hits), "answerable": record["answerable"],
+            "model_refused": metrics.is_refusal(record["final"]["answer"]),
+        })
+        print(metrics.progress_line(done, len(searchable), time.time() - started, f"{record['id']} top score {rows[-1]['score']:.2f}"), flush=True)
+    out_path.write_text("".join(json.dumps(r) + chr(10) for r in rows), encoding="utf-8")
+    return relevance_gate.cross_check(sorted(rows, key=lambda r: r["id"]))
+
+
+def run_robustness(out_path: Path) -> dict:
+    """Hostile and odd inputs through the whole chatbot, with the final pipeline's settings."""
+    from evals import robustness
+
+    apply_pipeline("final")
+    results, started = [], time.time()
+    for done, case in enumerate(robustness.CASES, start=1):
+        answer = agent.graph.invoke({"question": case["question"]})["answer"]
+        results.append(robustness.score_case(case, answer))
+        print(metrics.progress_line(done, len(robustness.CASES), time.time() - started, f"{case['id']} {'ok' if results[-1]['ok'] else 'FAILED'}"), flush=True)
+    out_path.write_text("".join(json.dumps(r, ensure_ascii=False) + chr(10) for r in results), encoding="utf-8")
+    return robustness.summarize_robustness(results)
+
+
 def route_of(record: dict, pipeline: str) -> str:
     """The route a pipeline chose. (Older result files stored one shared route at the top level.)"""
     return record[pipeline].get("route", record.get("route"))
@@ -234,8 +274,8 @@ def summarize_full(records: list[dict], pipelines: list[str]) -> dict:
         seconds = [r[name]["seconds"] for r in ok]
         summary[name] = {
             "routing_accuracy": sum(route_of(r, name) == r["gold_route"] for r in routed) / len(routed) if routed else None,
-            "correct_refusal_rate": sum(r[name]["refused"] for r in unanswerable) / len(unanswerable) if unanswerable else None,
-            "false_refusal_rate": sum(r[name]["refused"] for r in answerable) / len(answerable) if answerable else None,
+            "correct_refusal_rate": sum(metrics.is_refusal(r[name]["answer"]) for r in unanswerable) / len(unanswerable) if unanswerable else None,
+            "false_refusal_rate": sum(metrics.is_refusal(r[name]["answer"]) for r in answerable) / len(answerable) if answerable else None,
             "answer_seconds_p50": metrics.percentile(seconds, 50),
             "answer_seconds_p95": metrics.percentile(seconds, 95),
         }
@@ -263,17 +303,19 @@ def print_summary(mode: str, summary: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score the chatbot on the golden set, old index vs new.")
-    parser.add_argument("--mode", choices=["retrieval", "full", "routing", "comments", "judge"], default="retrieval")
+    parser.add_argument("--mode", choices=["retrieval", "full", "routing", "comments", "judge", "gate", "robustness"], default="retrieval")
     parser.add_argument("--limit", type=int, help="only the first N questions (for a quick try)")
     parser.add_argument("--only-labelled", action="store_true", help="only questions that have evidence quotes (about half the set)")
+    parser.add_argument("--with-unanswerable", action="store_true", help="with --only-labelled: also keep the unanswerable questions")
+    parser.add_argument("--no-faithfulness", action="store_true", help="judge mode: grade correctness only (about half the time)")
     parser.add_argument("--input", type=Path, help="the results file of a --mode full run (judge mode)")
     parser.add_argument("--pipelines", nargs="+", choices=list(PIPELINES), help="whole-chatbot setups to compare (full mode)")
     parser.add_argument("--configs", nargs="+", choices=list(RETRIEVAL_CONFIGS), help="retrieval setups to compare (retrieval mode)")
     args = parser.parse_args(argv)
 
     questions = load_dataset()
-    if args.only_labelled:
-        questions = [q for q in questions if q.get("gold_evidence")]
+    if args.only_labelled:  # the questions the judge can grade, plus the unanswerable ones that test refusals
+        questions = [q for q in questions if q.get("gold_evidence") or (args.with_unanswerable and not q["answerable"])]
     questions = questions[: args.limit]
     RESULTS_DIR.mkdir(exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -296,7 +338,12 @@ def main(argv: list[str] | None = None) -> int:
             summary = judge.run_judge(
                 args.input, load_dataset(), out_path,
                 lambda done, total, label: print(metrics.progress_line(done, total, time.time() - started, label), flush=True),
+                faithfulness=not args.no_faithfulness,
             )
+        elif args.mode == "robustness":
+            summary = run_robustness(out_path)
+        elif args.mode == "gate":
+            summary = run_gate(args.input, out_path)
         elif args.mode == "routing":
             summary = run_routing(questions, out_path)
         else:
