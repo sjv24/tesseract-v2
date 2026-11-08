@@ -7,3 +7,6 @@ dist/
 data/
 # Private study notes (not part of the project)
 notes/
+
+# Raw eval runs (the numbers worth keeping go into EVALS.md)
+backend/evals/results/
