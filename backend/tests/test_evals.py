@@ -70,15 +70,39 @@ def test_unlocatable_labels_flags_quotes_cut_by_a_chunk_boundary():
     assert run_evals.unlocatable_labels(questions, "v1", texts) == {"b"}
 
 
+def cfg(rank, chars_to_hit=None, chars=100, sizes=None):
+    return {"rank": rank, "chars_to_hit": chars_to_hit, "chars": chars, "sizes": sizes or [chars]}
+
+
 def test_summarize_retrieval_groups_by_route_and_type():
     records = [
-        {"id": "1", "type": "exact_name", "route": "script", "v1": {"rank": None}, "v2": {"rank": 1}},
-        {"id": "2", "type": "concept", "route": "textbook", "v1": {"rank": 2}, "v2": {"rank": 3}},
+        {"id": "1", "type": "exact_name", "route": "script", "configs": {"a": cfg(None), "b": cfg(1)}},
+        {"id": "2", "type": "concept", "route": "textbook", "configs": {"a": cfg(2), "b": cfg(3)}},
     ]
-    summary = run_evals.summarize_retrieval(records)
-    assert summary["overall"]["v1"]["hit_at_k"] == 0.5 and summary["overall"]["v2"]["hit_at_k"] == 1.0
-    assert summary["route=script"]["v2"]["questions"] == 1
-    assert "type=concept" in summary
+    summary = run_evals.summarize_retrieval(records, ["a", "b"])
+    assert summary["overall"]["a"]["hit_at_k"] == 0.5 and summary["overall"]["b"]["hit_at_k"] == 1.0
+    assert summary["route=script"]["b"]["questions"] == 1
+    assert "type=concept" in summary and "equal_text" not in summary
+
+
+def test_rank_and_chars_counts_what_you_had_to_read_to_reach_the_evidence():
+    result = metrics.rank_and_chars(["aaaa", "bb target bb", "cccccc"], ["target"])
+    assert result["rank"] == 2
+    assert result["chars_to_hit"] == 4 + 12
+    assert result["chars"] == 4 + 12 + 6
+    assert metrics.rank_and_chars(["x"], ["target"])["chars_to_hit"] is None
+
+
+def test_equal_text_only_counts_hits_inside_the_reference_text_budget():
+    long_lists = [cfg(30, chars_to_hit=900, chars=5000, sizes=[250] * 20), cfg(2, chars_to_hit=500, chars=5000, sizes=[250] * 20)]
+    references = [cfg(1, chars=1000), cfg(None, chars=1000)]
+    scores = metrics.equal_text_scores(long_lists, references)
+    assert scores["hit"] == 1.0  # both found it within 1,000 characters
+    assert scores["reference_hit"] == 0.5
+    assert scores["avg_budget_chars"] == 1000
+    assert scores["avg_chunks"] == 4  # 1,000 characters hold four 250-character chunks
+    far = metrics.equal_text_scores([cfg(30, chars_to_hit=1500, chars=5000)], [cfg(1, chars=1000)])
+    assert far["hit"] == 0  # found, but only after reading more text than the reference had
 
 
 def test_summarize_full_counts_refusals_routing_and_latency():

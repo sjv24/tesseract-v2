@@ -28,6 +28,43 @@ def first_hit_rank(chunk_texts: list[str], evidence: list[str]) -> int | None:
     return None
 
 
+def rank_and_chars(chunk_texts: list[str], evidence: list[str]) -> dict:
+    """The rank of the first chunk holding the evidence, how many characters you read up to and including it,
+    and how many characters the whole list holds (so lists of different chunk sizes can be compared fairly)."""
+    rank = first_hit_rank(chunk_texts, evidence)
+    return {
+        "rank": rank,
+        "chars_to_hit": sum(len(t) for t in chunk_texts[:rank]) if rank else None,
+        "chars": sum(len(t) for t in chunk_texts),
+        "sizes": [len(t) for t in chunk_texts],
+    }
+
+
+def chunks_within(sizes: list[int], budget: int) -> int:
+    """How many chunks from the start of the list fit inside a character budget."""
+    total = count = 0
+    for size in sizes:
+        total += size
+        if total > budget:
+            break
+        count += 1
+    return count
+
+
+def equal_text_scores(long_lists: list[dict], references: list[dict]) -> dict:
+    """For each question, count the long list as a hit only if the evidence shows up within as many characters
+    as the reference list contained. This removes the advantage of simply returning bigger chunks."""
+    hits = sum(1 for lst, ref in zip(long_lists, references) if lst["chars_to_hit"] is not None and lst["chars_to_hit"] <= ref["chars"])
+    ref_hits = sum(1 for ref in references if ref["rank"] is not None)
+    return {
+        "questions": len(references),
+        "hit": hits / len(references),
+        "reference_hit": ref_hits / len(references),
+        "avg_budget_chars": sum(r["chars"] for r in references) / len(references),
+        "avg_chunks": sum(chunks_within(lst["sizes"], ref["chars"]) for lst, ref in zip(long_lists, references)) / len(references),
+    }
+
+
 def retrieval_scores(ranks: list[int | None], k: int = 5) -> dict:
     """hit@k = share of questions with the evidence in the top k; MRR = mean of 1/rank (0 when missed)."""
     if not ranks:
