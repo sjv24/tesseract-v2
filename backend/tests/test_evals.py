@@ -1,5 +1,4 @@
 """Tests for the eval scoring and progress functions."""
-import json
 
 import pytest
 
@@ -116,12 +115,21 @@ def test_summarize_full_counts_refusals_routing_and_latency():
         rec("3", False, None, "script", True, 30),
         {"id": "4", "type": "x", "gold_route": "script", "answerable": True, "error": "ConnectionError: down"},
     ]
-    s = run_evals.summarize_full(records)
+    s = run_evals.summarize_full(records, ["v1", "v2"])
     assert s["errors"] == 1
-    assert s["routing_accuracy"] == 0.5  # 2 routed questions with a gold route, 1 right
+    assert s["v1"]["routing_accuracy"] == 0.5  # 2 routed questions with a gold route, 1 right
     assert s["v1"]["correct_refusal_rate"] == 1.0
     assert s["v1"]["false_refusal_rate"] == 0.5
     assert s["v1"]["answer_seconds_p50"] == 20
+
+
+def test_each_pipeline_reports_its_own_routing(  # a pipeline can use a different router model
+):
+    side = {"answer": "", "seconds": 1.0, "refused": False, "citations": []}
+    records = [{"id": "1", "type": "x", "gold_route": "script", "answerable": True,
+                "a": {**side, "route": "script"}, "b": {**side, "route": "comments"}}]
+    s = run_evals.summarize_full(records, ["a", "b"])
+    assert s["a"]["routing_accuracy"] == 1.0 and s["b"]["routing_accuracy"] == 0.0
 
 
 def test_every_labelled_question_has_a_route_and_is_answerable():
@@ -130,3 +138,16 @@ def test_every_labelled_question_has_a_route_and_is_answerable():
             assert q["answerable"] and q["gold_route"] in ("script", "textbook")
     ids = [q["id"] for q in run_evals.load_dataset()]
     assert len(ids) == len(set(ids))
+
+
+def test_a_pipeline_switches_the_chatbot_settings():
+    from app.core.config import settings
+
+    before = (settings.index_version, settings.retrieval_mode, settings.rerank_enabled)
+    try:
+        run_evals.apply_pipeline("final")
+        assert (settings.index_version, settings.retrieval_mode, settings.rerank_enabled) == ("v2", "hybrid", True)
+        run_evals.apply_pipeline("baseline")
+        assert (settings.index_version, settings.retrieval_mode, settings.rerank_enabled) == ("v1", "vector", False)
+    finally:
+        settings.index_version, settings.retrieval_mode, settings.rerank_enabled = before

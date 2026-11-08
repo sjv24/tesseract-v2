@@ -29,6 +29,28 @@ DATASET = Path(__file__).with_name("dataset.jsonl")
 HOLDOUT = Path(__file__).with_name("routing_holdout.jsonl")
 RESULTS_DIR = Path(__file__).with_name("results")
 INDEXES = ("v1", "v2")
+# Whole-chatbot setups compared by --mode full. "baseline" is the original pipeline; "final" has every improvement on.
+SMALL_MODEL = "hf.co/unsloth/Qwen3-4B-Instruct-2507-GGUF:Q4_K_M"
+PIPELINE_DEFAULTS = {
+    "index_version": "v1", "retrieval_mode": "vector", "rerank_enabled": False,
+    "top_k": 5, "chat_model": "qwen3:8b", "router_model": "qwen3:8b",
+}
+_FINAL = {"index_version": "v2", "retrieval_mode": "hybrid", "rerank_enabled": True}
+PIPELINES = {
+    name: {**PIPELINE_DEFAULTS, **overrides}
+    for name, overrides in {
+        "baseline": {},
+        "final": _FINAL,
+        "final-k3": {**_FINAL, "top_k": 3},  # only the 3 best chunks reach the model
+        "final-small": {**_FINAL, "chat_model": SMALL_MODEL, "router_model": SMALL_MODEL},  # a 4B model instead of 8B
+    }.items()
+}
+
+
+def apply_pipeline(name: str) -> None:
+    """Switch the chatbot's settings (index, search style, reranking) for the rest of this process."""
+    for field, value in PIPELINES[name].items():
+        setattr(settings, field, value)
 AGENTS = {"script": agent.script_agent, "textbook": agent.textbook_agent, "comments": agent.comments_agent, "multi": agent.multi_agent}
 
 
@@ -163,52 +185,57 @@ def summarize_routing(records: list[dict]) -> dict:
     return summary
 
 
-def run_full(questions: list[dict], out_path: Path) -> dict:
+def run_full(questions: list[dict], out_path: Path, pipelines: list[str] | None = None) -> dict:
+    pipelines = pipelines or list(PIPELINES)
     records = []
     started = time.time()
     with out_path.open("w", encoding="utf-8") as out:
         for done, q in enumerate(questions, start=1):
             record = {"id": q["id"], "type": q["type"], "gold_route": q.get("gold_route"), "answerable": q["answerable"]}
             try:
-                t0 = time.time()
-                route = classify(q["question"])  # the router does not depend on the index, so ask it once
-                record["route"], record["route_seconds"] = route, round(time.time() - t0, 1)
-                for version in INDEXES:
-                    use_index(version)
+                for name in pipelines:
+                    apply_pipeline(name)  # the router model is part of a pipeline, so each one routes for itself
+                    t0 = time.time()
+                    route = classify(q["question"])
+                    route_seconds = round(time.time() - t0, 1)
                     t0 = time.time()
                     result = AGENTS[route]({"question": q["question"]})
-                    record[version] = {
+                    record[name] = {
+                        "route": route,
+                        "route_seconds": route_seconds,
                         "answer": result["answer"],
                         "seconds": round(time.time() - t0, 1),
                         "refused": metrics.is_refusal(result["answer"]),
                         "citations": [c["chunk_id"] for c in result["citations"]],
+                        "contexts": result.get("contexts", []),  # exactly what the model read, kept for judging
                     }
             except (ConnectionError, ollama.ResponseError, WeaviateBaseError, RuntimeError) as error:
                 record["error"] = f"{type(error).__name__}: {error}"
             records.append(record)
             out.write(json.dumps(record, ensure_ascii=False) + "\n")
             out.flush()
-            note = record.get("error", f"route={record.get('route')} v1 {record['v1']['seconds']}s v2 {record['v2']['seconds']}s")
+            note = record.get("error") or " ".join(f"{n}: {record[n]['route']} {record[n]['seconds']}s" for n in pipelines)
             print(metrics.progress_line(done, len(questions), time.time() - started, f"{q['id']}  {note}"), flush=True)
-    return summarize_full(records)
+    return summarize_full(records, pipelines)
 
 
-def summarize_full(records: list[dict]) -> dict:
+def route_of(record: dict, pipeline: str) -> str:
+    """The route a pipeline chose. (Older result files stored one shared route at the top level.)"""
+    return record[pipeline].get("route", record.get("route"))
+
+
+def summarize_full(records: list[dict], pipelines: list[str]) -> dict:
     ok = [r for r in records if "error" not in r]
     routed = [r for r in ok if r["gold_route"]]
-    summary = {
-        "questions": len(records),
-        "errors": len(records) - len(ok),
-        "routing_accuracy": sum(r["route"] == r["gold_route"] for r in routed) / len(routed) if routed else None,
-        "router_seconds_p50": metrics.percentile([r["route_seconds"] for r in ok], 50),
-    }
-    for version in INDEXES:
-        unanswerable = [r for r in ok if not r["answerable"]]
-        answerable = [r for r in ok if r["answerable"]]
-        seconds = [r[version]["seconds"] for r in ok]
-        summary[version] = {
-            "correct_refusal_rate": sum(r[version]["refused"] for r in unanswerable) / len(unanswerable) if unanswerable else None,
-            "false_refusal_rate": sum(r[version]["refused"] for r in answerable) / len(answerable) if answerable else None,
+    unanswerable = [r for r in ok if not r["answerable"]]
+    answerable = [r for r in ok if r["answerable"]]
+    summary = {"questions": len(records), "errors": len(records) - len(ok)}
+    for name in pipelines:
+        seconds = [r[name]["seconds"] for r in ok]
+        summary[name] = {
+            "routing_accuracy": sum(route_of(r, name) == r["gold_route"] for r in routed) / len(routed) if routed else None,
+            "correct_refusal_rate": sum(r[name]["refused"] for r in unanswerable) / len(unanswerable) if unanswerable else None,
+            "false_refusal_rate": sum(r[name]["refused"] for r in answerable) / len(answerable) if answerable else None,
             "answer_seconds_p50": metrics.percentile(seconds, 50),
             "answer_seconds_p95": metrics.percentile(seconds, 95),
         }
@@ -236,22 +263,44 @@ def print_summary(mode: str, summary: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Score the chatbot on the golden set, old index vs new.")
-    parser.add_argument("--mode", choices=["retrieval", "full", "routing"], default="retrieval")
+    parser.add_argument("--mode", choices=["retrieval", "full", "routing", "comments", "judge"], default="retrieval")
     parser.add_argument("--limit", type=int, help="only the first N questions (for a quick try)")
+    parser.add_argument("--only-labelled", action="store_true", help="only questions that have evidence quotes (about half the set)")
+    parser.add_argument("--input", type=Path, help="the results file of a --mode full run (judge mode)")
+    parser.add_argument("--pipelines", nargs="+", choices=list(PIPELINES), help="whole-chatbot setups to compare (full mode)")
     parser.add_argument("--configs", nargs="+", choices=list(RETRIEVAL_CONFIGS), help="retrieval setups to compare (retrieval mode)")
     args = parser.parse_args(argv)
 
-    questions = load_dataset()[: args.limit]
+    questions = load_dataset()
+    if args.only_labelled:
+        questions = [q for q in questions if q.get("gold_evidence")]
+    questions = questions[: args.limit]
     RESULTS_DIR.mkdir(exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     out_path = RESULTS_DIR / f"{stamp}-{args.mode}.jsonl"
     try:
         if args.mode == "retrieval":
             summary = run_retrieval(questions, out_path, args.configs or list(RETRIEVAL_CONFIGS))
+        elif args.mode == "comments":
+            from evals import comments_eval
+
+            started = time.time()
+            summary = comments_eval.run_comments_eval(
+                load_dataset(),
+                lambda done, total, label: print(metrics.progress_line(done, total, time.time() - started, label), flush=True),
+            )
+        elif args.mode == "judge":
+            from evals import judge
+
+            started = time.time()
+            summary = judge.run_judge(
+                args.input, load_dataset(), out_path,
+                lambda done, total, label: print(metrics.progress_line(done, total, time.time() - started, label), flush=True),
+            )
         elif args.mode == "routing":
             summary = run_routing(questions, out_path)
         else:
-            summary = run_full(questions, out_path)
+            summary = run_full(questions, out_path, args.pipelines)
     except weaviate.exceptions.WeaviateConnectionError:
         print("Weaviate is not reachable on localhost:8080. Start Docker Desktop, then: docker start weaviate")
         return 2

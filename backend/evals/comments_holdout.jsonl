@@ -1,0 +1,20 @@
+{"id": "c01", "question": "How many comments talk about the ending?", "gold_query": {"kind": "stats", "metric": "count", "sentiment": [null], "keyword": ["ending"], "versus": null}}
+{"id": "c02", "question": "What percent of comments are neutral?", "gold_query": {"kind": "stats", "metric": "share", "sentiment": ["Neutral"], "keyword": [null], "versus": null}}
+{"id": "c03", "question": "How many negative comments mention the music?", "gold_query": {"kind": "stats", "metric": "count", "sentiment": ["Negative"], "keyword": ["music"], "versus": null}}
+{"id": "c04", "question": "Which aspects do viewers discuss most?", "gold_query": {"kind": "stats", "metric": "top_aspects", "sentiment": [null], "keyword": [null], "versus": null}}
+{"id": "c05", "question": "What is the ratio of negative to positive comments?", "gold_query": {"kind": "stats", "metric": "ratio", "sentiment": ["Negative"], "keyword": [null], "versus": "Positive"}}
+{"id": "c06", "question": "What proportion of comments mention Anne Hathaway?", "gold_query": {"kind": "stats", "metric": "share", "sentiment": [null], "keyword": ["anne hathaway"], "versus": null}}
+{"id": "c07", "question": "What do viewers like about the soundtrack?", "gold_query": {"kind": "opinion", "sentiment": ["Positive"]}}
+{"id": "c08", "question": "What do commenters complain about?", "gold_query": {"kind": "opinion", "sentiment": ["Negative"]}}
+{"id": "c09", "question": "What do people think about the plot?", "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "c10", "question": "How do viewers describe the ending?", "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "c11", "question": "What do fans love about the movie?", "gold_query": {"kind": "opinion", "sentiment": ["Positive"]}}
+{"id": "c12", "question": "Do viewers find the film confusing?", "gold_query": {"kind": "opinion", "sentiment": [null, "Negative"]}}
+{"id": "c13", "question": "How many comments mention the docking scene?", "gold_query": {"kind": "stats", "metric": "count", "sentiment": [null], "keyword": ["docking scene", "docking"], "versus": null}, "fresh": true}
+{"id": "c14", "question": "What fraction of the comments are negative?", "gold_query": {"kind": "stats", "metric": "share", "sentiment": ["Negative"], "keyword": [null], "versus": null}, "fresh": true}
+{"id": "c15", "question": "What do viewers admire about Cooper?", "gold_query": {"kind": "opinion", "sentiment": ["Positive"]}, "fresh": true}
+{"id": "c16", "question": "What do viewers say about the pacing of the movie?", "gold_query": {"kind": "opinion", "sentiment": [null]}, "fresh": true}
+{"id": "c17", "question": "What do commenters dislike about the dialogue?", "gold_query": {"kind": "opinion", "sentiment": ["Negative"]}, "fresh": true}
+{"id": "c18", "question": "What is the ratio of neutral to positive comments?", "gold_query": {"kind": "stats", "metric": "ratio", "sentiment": ["Neutral"], "keyword": [null], "versus": "Positive"}, "fresh": true}
+{"id": "c19", "question": "How do people feel about the robots?", "gold_query": {"kind": "opinion", "sentiment": [null]}, "fresh": true}
+{"id": "c20", "question": "What topics do commenters talk about the most?", "gold_query": {"kind": "stats", "metric": "top_aspects", "sentiment": [null], "keyword": [null], "versus": null}, "fresh": true}

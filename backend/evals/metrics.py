@@ -54,14 +54,14 @@ def chunks_within(sizes: list[int], budget: int) -> int:
 def equal_text_scores(long_lists: list[dict], references: list[dict]) -> dict:
     """For each question, count the long list as a hit only if the evidence shows up within as many characters
     as the reference list contained. This removes the advantage of simply returning bigger chunks."""
-    hits = sum(1 for lst, ref in zip(long_lists, references) if lst["chars_to_hit"] is not None and lst["chars_to_hit"] <= ref["chars"])
+    hits = sum(1 for lst, ref in zip(long_lists, references, strict=True) if lst["chars_to_hit"] is not None and lst["chars_to_hit"] <= ref["chars"])
     ref_hits = sum(1 for ref in references if ref["rank"] is not None)
     return {
         "questions": len(references),
         "hit": hits / len(references),
         "reference_hit": ref_hits / len(references),
         "avg_budget_chars": sum(r["chars"] for r in references) / len(references),
-        "avg_chunks": sum(chunks_within(lst["sizes"], ref["chars"]) for lst, ref in zip(long_lists, references)) / len(references),
+        "avg_chunks": sum(chunks_within(lst["sizes"], ref["chars"]) for lst, ref in zip(long_lists, references, strict=True)) / len(references),
     }
 
 

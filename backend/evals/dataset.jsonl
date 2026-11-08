@@ -17,17 +17,17 @@
 {"id": "q017", "question": "How could a wormhole exist according to physics?", "type": "concept", "gold_route": "textbook", "answerable": true, "gold_evidence": ["ludwig flamm in vienna discovered a solution"]}
 {"id": "q018", "question": "How does time pass differently near a black hole?", "type": "concept", "gold_route": "textbook", "answerable": true, "gold_evidence": ["seven years on earth is one hour on miller's planet", "everything likes to live where it will age the most slowly"]}
 {"id": "q019", "question": "What is the blight that threatens Earth?", "type": "concept", "gold_route": "script", "answerable": true, "gold_evidence": ["blight. wheat seven years ago, okra this year"]}
-{"id": "q020", "question": "What do viewers think about the ending?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q021", "question": "What do viewers say about the soundtrack?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q022", "question": "What do viewers dislike about the film?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q023", "question": "How did people react to Hans Zimmer's organ music?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q024", "question": "What do viewers think of Matthew McConaughey's performance?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q025", "question": "What do fans say about the docking scene?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q026", "question": "What do viewers say is confusing about the movie?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q027", "question": "What share of the comments are negative?", "type": "aggregate", "gold_route": "comments", "answerable": true}
-{"id": "q028", "question": "How many comments mention the soundtrack?", "type": "aggregate", "gold_route": "comments", "answerable": true}
-{"id": "q029", "question": "Which topic do viewers mention most often?", "type": "aggregate", "gold_route": "comments", "answerable": true}
-{"id": "q030", "question": "What percentage of comments mention Hans Zimmer?", "type": "aggregate", "gold_route": "comments", "answerable": true}
+{"id": "q020", "question": "What do viewers think about the ending?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q021", "question": "What do viewers say about the soundtrack?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q022", "question": "What do viewers dislike about the film?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": ["Negative"]}}
+{"id": "q023", "question": "How did people react to Hans Zimmer's organ music?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q024", "question": "What do viewers think of Matthew McConaughey's performance?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q025", "question": "What do fans say about the docking scene?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q026", "question": "What do viewers say is confusing about the movie?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null, "Negative"]}}
+{"id": "q027", "question": "What share of the comments are negative?", "type": "aggregate", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "stats", "metric": "share", "sentiment": ["Negative"], "keyword": [null], "versus": null}}
+{"id": "q028", "question": "How many comments mention the soundtrack?", "type": "aggregate", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "stats", "metric": "count", "sentiment": [null], "keyword": ["soundtrack"], "versus": null}}
+{"id": "q029", "question": "Which topic do viewers mention most often?", "type": "aggregate", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "stats", "metric": "top_aspects", "sentiment": [null], "keyword": [null], "versus": null}}
+{"id": "q030", "question": "What percentage of comments mention Hans Zimmer?", "type": "aggregate", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "stats", "metric": "share", "sentiment": [null], "keyword": ["hans zimmer"], "versus": null}}
 {"id": "q031", "question": "Is the tesseract scene scientifically accurate, and how did viewers react to it?", "type": "cross_source", "gold_route": "multi", "answerable": true}
 {"id": "q032", "question": "Is the wormhole in the film realistic, and what do fans think of it?", "type": "cross_source", "gold_route": "multi", "answerable": true}
 {"id": "q033", "question": "How does the film's depiction of time dilation compare with real physics?", "type": "cross_source", "gold_route": "multi", "answerable": true}
@@ -53,8 +53,8 @@
 {"id": "q053", "question": "Which physicists worked out the details of warped spacetime around a black hole?", "type": "exact_name", "gold_route": "textbook", "answerable": true, "gold_evidence": ["karl schwarzschild, roy kerr, and stephen hawking"]}
 {"id": "q054", "question": "What is the Riemann tensor?", "type": "exact_name", "gold_route": "textbook", "answerable": true, "gold_evidence": ["a mathematical quantity called the riemann tensor"]}
 {"id": "q055", "question": "How might Professor Brand have discovered the wormhole?", "type": "concept", "gold_route": "textbook", "answerable": true, "gold_evidence": ["might have discovered the wormhole, via gravitational waves"]}
-{"id": "q056", "question": "What do viewers say about the visual effects?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q057", "question": "What share of the comments are positive?", "type": "aggregate", "gold_route": "comments", "answerable": true}
+{"id": "q056", "question": "What do viewers say about the visual effects?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q057", "question": "What share of the comments are positive?", "type": "aggregate", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "stats", "metric": "share", "sentiment": ["Positive"], "keyword": [null], "versus": null}}
 {"id": "q058", "question": "What was the film's box office revenue?", "type": "unanswerable", "answerable": false}
 {"id": "q059", "question": "Who directed Dunkirk?", "type": "unanswerable", "answerable": false}
 {"id": "q060", "question": "What is the capital of France?", "type": "unanswerable", "answerable": false}
@@ -85,16 +85,22 @@
 {"id": "q085", "question": "Is the black hole in the film realistic, and what do viewers think of its look?", "type": "cross_source", "gold_route": "multi", "answerable": true}
 {"id": "q086", "question": "Was Dr Mann a good person?", "type": "ambiguous_route", "gold_route": "script", "answerable": true}
 {"id": "q087", "question": "Is the movie scientifically accurate?", "type": "ambiguous_route", "gold_route": "multi", "answerable": true}
-{"id": "q088", "question": "Which character do viewers like the most?", "type": "ambiguous_route", "gold_route": "comments", "answerable": true}
-{"id": "q089", "question": "What do viewers say about Anne Hathaway's performance?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q090", "question": "How do viewers feel about the science in the movie?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q091", "question": "What do viewers say about the Miller's planet scene?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q092", "question": "What do viewers say about the way the black hole looks?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true}
-{"id": "q093", "question": "How many comments mention Christopher Nolan?", "type": "aggregate", "gold_route": "comments", "answerable": true}
-{"id": "q094", "question": "What is the ratio of positive to negative comments?", "type": "aggregate", "gold_route": "comments", "answerable": true}
+{"id": "q088", "question": "Which character do viewers like the most?", "type": "ambiguous_route", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null, "Positive"]}}
+{"id": "q089", "question": "What do viewers say about Anne Hathaway's performance?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q090", "question": "How do viewers feel about the science in the movie?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q091", "question": "What do viewers say about the Miller's planet scene?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q092", "question": "What do viewers say about the way the black hole looks?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": [null]}}
+{"id": "q093", "question": "How many comments mention Christopher Nolan?", "type": "aggregate", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "stats", "metric": "count", "sentiment": [null], "keyword": ["christopher nolan", "nolan"], "versus": null}}
+{"id": "q094", "question": "What is the ratio of positive to negative comments?", "type": "aggregate", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "stats", "metric": "ratio", "sentiment": ["Positive"], "keyword": [null], "versus": "Negative"}}
 {"id": "q095", "question": "What is Dr Mann's first name?", "type": "unanswerable", "answerable": false}
 {"id": "q096", "question": "What song plays during the end credits?", "type": "unanswerable", "answerable": false}
 {"id": "q097", "question": "How tall is Matthew McConaughey?", "type": "unanswerable", "answerable": false}
 {"id": "q098", "question": "Who is the current president of the United States?", "type": "unanswerable", "answerable": false}
 {"id": "q099", "question": "What is the plot of Tenet?", "type": "unanswerable", "answerable": false}
 {"id": "q100", "question": "How much money did Interstellar cost to make?", "type": "unanswerable", "answerable": false}
+{"id": "q101", "question": "What do viewers praise most about the film?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": ["Positive"]}}
+{"id": "q102", "question": "What are the biggest complaints in the comments?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": ["Negative"]}}
+{"id": "q103", "question": "What do people love about the visuals?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": ["Positive"]}}
+{"id": "q104", "question": "What do viewers criticise about the plot?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": ["Negative"]}}
+{"id": "q105", "question": "Which parts of the movie do fans enjoy?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": ["Positive"]}}
+{"id": "q106", "question": "What do viewers hate about the ending?", "type": "filtered_opinion", "gold_route": "comments", "answerable": true, "gold_query": {"kind": "opinion", "sentiment": ["Negative"]}}
