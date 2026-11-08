@@ -70,21 +70,46 @@ def classify_node(state: AgentState) -> dict:
     return {"category": classify(state["question"])}
 
 
+TOP_K = 5
+# hybrid search and reranking were measured on these two sources only (the comments have no labelled evidence)
+IMPROVED_RETRIEVAL_SOURCES = {"script", "textbook"}
+
+
 def _retrieve(source_name: str, question: str) -> list[dict]:
     source = SOURCES[source_name]
     collection = collection_name(source_name)
-    hits = search(collection, question, embedder=source["embedder"])
+    improved = source_name in IMPROVED_RETRIEVAL_SOURCES
+    rerank_on = improved and settings.rerank_enabled
+    hits = search(
+        collection,
+        question,
+        k=settings.rerank_candidates if rerank_on else TOP_K,
+        embedder=source["embedder"],
+        mode=settings.retrieval_mode if improved else "vector",
+        alpha=settings.hybrid_alpha,
+    )
+    if rerank_on:
+        from app.retrieval.rerank import rerank  # imported here so the model only loads when reranking is switched on
+
+        hits = rerank(question, hits, top_n=TOP_K)
     return [{**hit, "source": source_name, "collection": collection} for hit in hits]
 
 
 def _citation(hit: dict) -> dict:
+    # the score's scale depends on how the chunk was ranked: reranker score, else hybrid score, else 1 - cosine distance
+    if hit.get("rerank_score") is not None:
+        score = hit["rerank_score"]
+    elif hit.get("distance") is not None:
+        score = 1 - hit["distance"]
+    else:
+        score = hit["score"]
     return {
         "source": hit["source"],
         "collection": hit["collection"],
         "chunk_id": hit["chunk_id"],
         "section": hit["section"],
         "page": hit["page"],
-        "score": round(1 - hit["distance"], 4),
+        "score": round(score, 4),
         "snippet": hit["text"][:200],
     }
 

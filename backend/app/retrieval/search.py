@@ -29,19 +29,35 @@ def search(
     question: str,
     k: int = 5,
     embedder: str = "ollama",
+    mode: str = "vector",
+    alpha: float = 0.5,
 ) -> list[dict]:
-    """Top-k chunks. Fields a collection does not have (the old index has no section/page) come back as None, and chunk_id falls back to the object's UUID."""
+    """Top-k chunks. mode="vector" is pure meaning-based search; mode="hybrid" mixes it with keyword (BM25) search,
+    where alpha=1 is all vector and alpha=0 is all keyword.
+    Fields a collection does not have (the old index has no section/page) come back as None,
+    and chunk_id falls back to the object's UUID."""
     vector = EMBEDDERS[embedder](question)
     collection = get_client().collections.use(collection_name)
-    result = collection.query.near_vector(
-        near_vector=vector,
-        limit=k,
-        return_metadata=MetadataQuery(distance=True),
-    )
+    if mode == "hybrid":
+        result = collection.query.hybrid(
+            query=question,
+            vector=vector,
+            alpha=alpha,
+            query_properties=["text"],
+            limit=k,
+            return_metadata=MetadataQuery(score=True),
+        )
+    else:
+        result = collection.query.near_vector(
+            near_vector=vector,
+            limit=k,
+            return_metadata=MetadataQuery(distance=True),
+        )
     return [
         {
             "text": o.properties["text"],
             "distance": o.metadata.distance,
+            "score": o.metadata.score,
             "chunk_id": o.properties.get("chunk_id") or str(o.uuid),
             "section": o.properties.get("section"),
             "page": o.properties.get("page"),

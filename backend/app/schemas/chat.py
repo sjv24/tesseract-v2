@@ -15,7 +15,7 @@ class Citation(BaseModel):
     chunk_id: str
     section: str | None = None
     page: int | None = None
-    score: float  # cosine similarity, 1.0 = identical direction
+    score: float  # relevance; higher is better, but the scale depends on the retrieval mode (cosine similarity, hybrid score or reranker score)
     snippet: str
 
 

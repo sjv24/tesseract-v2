@@ -164,3 +164,61 @@ def test_router_and_generator_use_the_same_context_size(monkeypatch):
     router.classify("q")
     generator.generate("q", ["a"])
     assert seen[0] == seen[1] == settings.ollama_num_ctx
+
+
+# --- hybrid search and reranking ---------------------------------------------
+
+def test_retrieval_defaults_are_plain_vector_search_without_rerank(monkeypatch):
+    calls = []
+    monkeypatch.setattr(g, "search", lambda collection, question, **kw: calls.append(kw) or [fake_hit()])
+    g._retrieve("script", "q")
+    assert calls[0]["mode"] == "vector" and calls[0]["k"] == 5
+
+
+def test_hybrid_and_rerank_settings_change_how_script_and_textbook_are_searched(monkeypatch):
+    from app.retrieval import rerank as rerank_module
+
+    calls = []
+    monkeypatch.setattr(g, "search", lambda collection, question, **kw: calls.append(kw) or [fake_hit(n) for n in range(1, 31)])
+    monkeypatch.setattr(rerank_module, "get_model", lambda: type("M", (), {"rerank": lambda self, q, docs: [-float(i) for i in range(len(docs))]})())
+    monkeypatch.setattr(settings, "retrieval_mode", "hybrid")
+    monkeypatch.setattr(settings, "rerank_enabled", True)
+    hits = g._retrieve("textbook", "q")
+    assert calls[0]["mode"] == "hybrid" and calls[0]["k"] == 30  # fetch many candidates...
+    assert len(hits) == 5 and "rerank_score" in hits[0]  # ...keep the best 5
+
+
+def test_comments_always_use_plain_vector_search(monkeypatch):
+    calls = []
+    monkeypatch.setattr(g, "search", lambda collection, question, **kw: calls.append(kw) or [fake_hit()])
+    monkeypatch.setattr(settings, "retrieval_mode", "hybrid")
+    monkeypatch.setattr(settings, "rerank_enabled", True)
+    g._retrieve("comments", "q")
+    assert calls[0]["mode"] == "vector" and calls[0]["k"] == 5
+
+
+def test_citation_score_comes_from_the_ranking_that_was_used():
+    base = {"source": "script", "collection": "c", "chunk_id": "x", "section": None, "page": None, "text": "t"}
+    assert g._citation({**base, "distance": 0.25, "score": None})["score"] == 0.75
+    assert g._citation({**base, "distance": None, "score": 0.9})["score"] == 0.9
+    assert g._citation({**base, "distance": 0.25, "score": None, "rerank_score": 3.5})["score"] == 3.5
+
+
+def test_router_accepts_a_different_prompt(monkeypatch):
+    from app.agent import router
+
+    seen = {}
+    monkeypatch.setattr(router.ollama, "chat", lambda **kw: seen.update(kw) or {"message": {"content": '{"category": "multi"}'}})
+    assert router.classify("q", system_prompt="custom") == "multi"
+    assert seen["messages"][0]["content"] == "custom"
+
+
+def test_rerank_puts_the_highest_scoring_chunk_first_and_keeps_only_top_n(monkeypatch):
+    from app.retrieval import rerank as rerank_module
+
+    monkeypatch.setattr(rerank_module, "get_model", lambda: type("M", (), {"rerank": lambda self, q, docs: [0.1, 0.9, 0.5]})())
+    hits = [{"text": "a"}, {"text": "b"}, {"text": "c"}]
+    ranked = rerank_module.rerank("q", hits, top_n=2)
+    assert [h["text"] for h in ranked] == ["b", "c"]
+    assert ranked[0]["rerank_score"] == 0.9
+    assert rerank_module.rerank("q", [], top_n=2) == []
