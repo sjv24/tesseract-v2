@@ -172,7 +172,8 @@ relative, not absolute.
   the first judge marked fuller correct answers wrong. Both are still small samples.
 - **Strict answering rules made answers worse** (63% to 45%). Telling the model to answer in one to three sentences and copy
   wording made answers shorter and less complete: "partly" went from 18% to 35%. Not adopted; `STRICT_PROMPT` stays off.
-  The 81% correct-refusal figure from that run is mostly the off-topic fix (7b), not the prompt.
+  That run's 81% correct-refusal figure (13 of 16) came with the strict prompt on and after the off-topic fix (7); the two effects
+  were not separated, and the run with the default prompt and the fix was not repeated, so the refusal gain from the fix alone is unmeasured.
 - **3 chunks instead of 5 loses 8 points** (63% to 55%) and hit@3 was already lower (72% against 83%).
 - **The 4B model matches the 8B on this set** (65% against 63%, a one-question difference). The timing for it is in the
   next table; the earlier timings were taken while two models alternated in memory and are not usable.
