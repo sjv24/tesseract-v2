@@ -15,12 +15,12 @@ class Settings(BaseSettings):
     # which web pages may call the API (comma separated)
     cors_origins: str = "http://localhost:5173,http://localhost:3000"
     # "v1" = the original index, "v2" = the structure-aware chunks (comments have no v2 and always use v1)
-    index_version: Literal["v1", "v2"] = "v1"
+    index_version: Literal["v1", "v2"] = "v2"
     # "vector" = meaning-based search; "hybrid" also matches exact keywords (BM25). Applies to script and textbook.
-    retrieval_mode: Literal["vector", "hybrid"] = "vector"
+    retrieval_mode: Literal["vector", "hybrid"] = "hybrid"
     hybrid_alpha: float = 0.75  # 1.0 = all vector, 0.0 = all keyword
     # re-score the top candidates with a cross-encoder and keep the best 5 (script and textbook only)
-    rerank_enabled: bool = False
+    rerank_enabled: bool = True
     rerank_candidates: int = 30
     # chunks passed to the model per source (fewer is faster; the reranker makes a small number more reliable)
     top_k: int = 5

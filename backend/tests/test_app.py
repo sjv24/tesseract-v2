@@ -20,6 +20,10 @@ def fake_hit(n=1):
 @pytest.fixture
 def client(monkeypatch):
     """The real graph, with the router, search and model replaced by fakes."""
+    # these tests are about citations, errors and logging, not about search style, so they pin the plain setup
+    # (similarity score = 1 - distance, no reranker model to load); the defaults have their own test below
+    monkeypatch.setattr(settings, "retrieval_mode", "vector")
+    monkeypatch.setattr(settings, "rerank_enabled", False)
     monkeypatch.setattr(g, "classify", lambda question: "script")
     monkeypatch.setattr(g, "search", lambda collection, question, **kw: [fake_hit(1), fake_hit(2)])
     monkeypatch.setattr(g, "generate", lambda question, chunks, prompt: f"answer from {len(chunks)} chunks")
@@ -171,8 +175,18 @@ def test_router_and_generator_use_the_same_context_size(monkeypatch):
 
 # --- hybrid search and reranking ---------------------------------------------
 
-def test_retrieval_defaults_are_plain_vector_search_without_rerank(monkeypatch):
+def test_the_defaults_are_the_measured_best_setup():
+    from app.core.config import Settings
+
+    defaults = Settings(_env_file=None)  # ignore any local .env so this checks the code's own defaults
+    assert (defaults.index_version, defaults.retrieval_mode, defaults.rerank_enabled) == ("v2", "hybrid", True)
+    assert defaults.top_k == 5 and defaults.strict_prompt is False and defaults.harden_prompt is False
+
+
+def test_plain_vector_search_without_rerank_is_still_available(monkeypatch):
     calls = []
+    monkeypatch.setattr(settings, "retrieval_mode", "vector")
+    monkeypatch.setattr(settings, "rerank_enabled", False)
     monkeypatch.setattr(g, "search", lambda collection, question, **kw: calls.append(kw) or [fake_hit()])
     g._retrieve("script", "q")
     assert calls[0]["mode"] == "vector" and calls[0]["k"] == 5

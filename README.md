@@ -87,7 +87,7 @@ EVALS.md               the evaluation log
 | `Interstellar_Comments` | 41,358 | OpenAI `text-embedding-3-small` | one YouTube comment per object, with `sentiment` and `aspects` labels |
 | `Interstellar_Script`, `Interstellar_Textbook` | 655 / 2,275 | Ollama `embeddinggemma` | the original 245-character chunks (v1), kept for comparison |
 
-The source PDFs are not in the repository because of copyright, so a fresh clone has no index until you supply them. `INDEX_VERSION=v2` selects the structure-aware collections.
+The source PDFs are not in the repository because of copyright, so a fresh clone has no index until you supply them. `INDEX_VERSION=v2` (the default) selects the structure-aware collections; `INDEX_VERSION=v1 RETRIEVAL_MODE=vector RERANK_ENABLED=false` switches back to the original setup, which is about 2.8 times faster on a CPU and less accurate (see the results table). The first request with reranking on downloads an 80 MB model.
 
 ## Running it locally
 
@@ -101,7 +101,7 @@ ollama pull embeddinggemma
 **Option 1: Docker Compose** (Ollama keeps running on your computer, because the containers cannot use the integrated graphics)
 
 ```bash
-cp .env.example .env     # then set OPENAI_API_KEY and, for the best setup, INDEX_VERSION=v2 RETRIEVAL_MODE=hybrid RERANK_ENABLED=true
+cp .env.example .env     # then set OPENAI_API_KEY. The defaults are the measured best setup (v2 index, hybrid search, reranking)
 docker compose up --build
 ```
 
