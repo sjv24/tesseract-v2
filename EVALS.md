@@ -177,9 +177,21 @@ relative, not absolute.
 - **The 4B model matches the 8B on this set** (65% against 63%, a one-question difference). The timing for it is in the
   next table; the earlier timings were taken while two models alternated in memory and are not usable.
 
-**Latency of the 3-chunk and 4B variants is not established.** The first timings were taken while two models alternated in
-memory, and a clean re-timing was interrupted by other work on the same machine, so no usable numbers exist yet. Do not
-quote them. To redo it: run `--pipelines final-small --only-labelled --limit 12` and the same for `final` with nothing else running.
+**Clean latency, 8B against 4B** (the same first 12 labelled questions, one pipeline at a time, nothing else running on
+the machine; run on 2026-11-10):
+
+| | answer time p50 | p95 |
+|---|---|---|
+| final, `qwen3:8b` | 65.1 s | 82.1 s |
+| final, Qwen3-4B-Instruct | 47.7 s | 64.4 s |
+
+- **The 4B model is about 27% faster at the median (22% at p95), not 2x faster.** Most of the time is spent reading the
+  5 chunks of about 1,600 characters, which both models must do, so halving the parameters does not halve the time.
+- **The machine was slower on this day than during the first end-to-end run** (8B median 65 s here against 39 s then; same
+  code, same questions' type), so only the comparison within this table is meaningful, not the absolute seconds.
+- With equal judged correctness (65% against 63% on 49 questions) the 4B model is a reasonable option for a slower machine,
+  but one question separates them, and the 3-chunk option (which cuts reading time more) costs 8 points of correctness.
+  The 3-chunk latency was not re-timed, so no latency claim is made for it.
 
 ### 7d. Robustness smoke test (8 cases): 4 of 8 pass
 
