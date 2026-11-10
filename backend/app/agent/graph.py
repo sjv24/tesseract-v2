@@ -5,6 +5,7 @@ from langgraph.graph import END, START, StateGraph
 from app.agent.comments_query import run_stats, understand
 from app.agent.router import Category, classify
 from app.core.config import settings
+from app.core.guard import DECLINE_ANSWER, looks_like_injection
 from app.generation.generator import generate
 from app.retrieval.comments_stats import load_comments
 from app.retrieval.search import search
@@ -138,6 +139,9 @@ def prepare(category: str, question: str) -> dict:
     """Everything needed to answer, before any text is generated: the instructions, the excerpts and the citations.
     Counting questions about the comments come back with `direct_answer` already computed (no model call needed).
     Streaming uses this to show citations first and then stream the generation; the normal agents use it too."""
+    if looks_like_injection(question):  # an obvious attempt to give the model new instructions: decline, no search, no model
+        return {"direct_answer": DECLINE_ANSWER, "chunks": [], "citations": []}
+
     if category == "multi":
         hits = [hit for source_name in SOURCES for hit in _retrieve(source_name, question)]
         chunks = [f"[{h['source']}] {h['text']}" for h in hits]
