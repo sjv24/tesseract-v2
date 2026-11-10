@@ -2,9 +2,19 @@ from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
+from app.agent.comments_query import run_stats, understand
 from app.agent.router import Category, classify
+from app.core.config import settings
+from app.core.guard import DECLINE_ANSWER, looks_like_injection
 from app.generation.generator import generate
+from app.retrieval.comments_stats import load_comments
 from app.retrieval.search import search
+
+# the structure-aware index; the comments have no v2 and always use the original collection
+V2_COLLECTIONS = {
+    "script": "Interstellar_Script_v2",
+    "textbook": "Interstellar_Textbook_v2",
+}
 
 SOURCES = {
     "script": {
@@ -49,43 +59,131 @@ class AgentState(TypedDict, total=False):
     question: str
     category: Category
     answer: str
+    citations: list[dict]
+    contexts: list[str]  # the exact excerpts the model was given
+
+
+def collection_name(source_name: str) -> str:
+    """The Weaviate collection to search, following INDEX_VERSION from .env."""
+    if settings.index_version == "v2" and source_name in V2_COLLECTIONS:
+        return V2_COLLECTIONS[source_name]
+    return SOURCES[source_name]["collection"]
 
 
 def classify_node(state: AgentState) -> dict:
     return {"category": classify(state["question"])}
 
 
-def _retrieve(source_name: str, question: str) -> list[str]:
+# hybrid search and reranking were measured on these two sources only (the comments have no labelled evidence)
+IMPROVED_RETRIEVAL_SOURCES = {"script", "textbook"}
+
+
+def _retrieve(source_name: str, question: str, sentiment: str | None = None) -> list[dict]:
     source = SOURCES[source_name]
-    hits = search(source["collection"], question, embedder=source["embedder"])
-    return [hit["text"] for hit in hits]
+    collection = collection_name(source_name)
+    improved = source_name in IMPROVED_RETRIEVAL_SOURCES
+    rerank_on = improved and settings.rerank_enabled
+    hits = search(
+        collection,
+        question,
+        k=settings.rerank_candidates if rerank_on else settings.top_k,
+        embedder=source["embedder"],
+        mode=settings.retrieval_mode if improved else "vector",
+        alpha=settings.hybrid_alpha,
+        sentiment=sentiment,
+    )
+    if rerank_on:
+        from app.retrieval.rerank import rerank  # imported here so the model only loads when reranking is switched on
+
+        hits = rerank(question, hits, top_n=settings.top_k)
+    return [{**hit, "source": source_name, "collection": collection} for hit in hits]
 
 
-def _single_source_agent(source_name: str, state: AgentState) -> dict:
-    chunks = _retrieve(source_name, state["question"])
-    answer = generate(state["question"], chunks, SOURCES[source_name]["prompt"])
-    return {"answer": answer}
+def _citation(hit: dict) -> dict:
+    # the score's scale depends on how the chunk was ranked: reranker score, else hybrid score, else 1 - cosine distance
+    if hit.get("rerank_score") is not None:
+        score = hit["rerank_score"]
+    elif hit.get("distance") is not None:
+        score = 1 - hit["distance"]
+    else:
+        score = hit["score"]
+    return {
+        "source": hit["source"],
+        "collection": hit["collection"],
+        "chunk_id": hit["chunk_id"],
+        "section": hit["section"],
+        "page": hit["page"],
+        "score": round(score, 4),
+        "snippet": hit["text"][:200],
+    }
+
+
+STRICT_RULES = (
+    " Answer in one to three sentences. Take names, numbers and key phrases exactly as the excerpts word them, "
+    "do not replace them with your own wording, and do not add facts that are not in the excerpts. "
+    "If the excerpts only partly answer the question, give the part they support."
+)
+
+
+def with_rules(system_prompt: str) -> str:
+    return system_prompt + STRICT_RULES if settings.strict_prompt else system_prompt
+
+
+def is_unfiltered_total(query) -> bool:
+    """A counting query with no topic and no tone just asks for the number of all comments."""
+    # a missing metric also ends up as a plain count (the last branch of run_stats)
+    return query.kind == "stats" and query.metric in (None, "count", "share") and not query.keyword and not query.sentiment
+
+
+def prepare(category: str, question: str) -> dict:
+    """Everything needed to answer, before any text is generated: the instructions, the excerpts and the citations.
+    Counting questions about the comments come back with `direct_answer` already computed (no model call needed).
+    Streaming uses this to show citations first and then stream the generation; the normal agents use it too."""
+    if looks_like_injection(question):  # an obvious attempt to give the model new instructions: decline, no search, no model
+        return {"direct_answer": DECLINE_ANSWER, "chunks": [], "citations": []}
+
+    if category == "multi":
+        hits = [hit for source_name in SOURCES for hit in _retrieve(source_name, question)]
+        chunks = [f"[{h['source']}] {h['text']}" for h in hits]
+        return {"system_prompt": with_rules(MULTI_PROMPT), "chunks": chunks, "citations": [_citation(h) for h in hits]}
+
+    sentiment = None
+    if category == "comments":
+        try:
+            query = understand(question)
+        except ValueError:  # the model returned something that is not a valid query: fall back to plain search
+            query = None
+        if query is not None and is_unfiltered_total(query) and "comment" not in question.lower():
+            query = None  # not really a counting question: "41,358 comments" would be a nonsense answer to it
+        if query is not None and query.kind == "stats":
+            return {"direct_answer": run_stats(query, load_comments()), "chunks": [], "citations": []}
+        sentiment = query.sentiment if query else None
+
+    hits = _retrieve(category, question, sentiment=sentiment)
+    return {"system_prompt": with_rules(SOURCES[category]["prompt"]), "chunks": [h["text"] for h in hits], "citations": [_citation(h) for h in hits]}
+
+
+def _agent(category: str, state: AgentState) -> dict:
+    plan = prepare(category, state["question"])
+    answer = plan.get("direct_answer") or generate(state["question"], plan["chunks"], plan["system_prompt"])
+    return {"answer": answer, "citations": plan["citations"], "contexts": plan["chunks"]}
 
 
 def script_agent(state: AgentState) -> dict:
-    return _single_source_agent("script", state)
+    return _agent("script", state)
 
 
 def textbook_agent(state: AgentState) -> dict:
-    return _single_source_agent("textbook", state)
+    return _agent("textbook", state)
 
 
 def comments_agent(state: AgentState) -> dict:
-    return _single_source_agent("comments", state)
+    """Counting questions are computed over all comments; opinion questions search them (by tone when one is implied)."""
+    return _agent("comments", state)
 
 
 def multi_agent(state: AgentState) -> dict:
-    question = state["question"]
-    chunks = []
-    for source_name in SOURCES:
-        for text in _retrieve(source_name, question):
-            chunks.append(f"[{source_name}] {text}")
-    return {"answer": generate(question, chunks, MULTI_PROMPT)}
+    return _agent("multi", state)
 
 
 def route(state: AgentState) -> str:

@@ -1,0 +1,8 @@
+line-length = 130
+target-version = "py311"
+extend-exclude = [".venv"]
+
+[lint]
+# E/F: errors and unused names; I: import order; B: likely bugs; UP: modern syntax
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # long lines are fine here; readability is judged in review, not by a number

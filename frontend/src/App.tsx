@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { sendChat } from './api'
-import type { ChatResponse } from './types'
+import { streamChat } from './api'
+import type { Category, Citation } from './types'
 import './App.css'
 
-type Message = ChatResponse & { question: string }
+type Message = { question: string; category?: Category; answer: string; citations: Citation[] }
 
-const SOURCE_LABELS: Record<ChatResponse['category'], string> = {
+const SOURCE_LABELS: Record<Category, string> = {
   script: 'Screenplay',
   textbook: 'Science textbook',
   comments: 'Viewer comments',
@@ -44,11 +44,24 @@ function App() {
     setLoading(true)
     setElapsed(0)
     setError(null)
+    setQuestion('')
+    // add the question with an empty answer now; the answer fills in as pieces arrive
+    setMessages((prev) => [...prev, { question: text, answer: '', citations: [] }])
+    const updateLast = (change: (m: Message) => Message) =>
+      setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? change(m) : m)))
     try {
-      const response = await sendChat({ question: text })
-      setMessages((prev) => [...prev, { question: text, ...response }])
-      setQuestion('')
+      await streamChat({ question: text }, (event) => {
+        if (event.type === 'meta') {
+          updateLast((m) => ({ ...m, category: event.category, citations: event.citations }))
+        } else if (event.type === 'token') {
+          updateLast((m) => ({ ...m, answer: m.answer + event.text }))
+        } else if (event.type === 'error') {
+          setError(event.detail)
+        }
+      })
     } catch (err) {
+      setMessages((prev) => prev.slice(0, -1)) // drop the unanswered question
+      setQuestion(text)
       setError(err instanceof Error ? err.message : 'Something went wrong')
     } finally {
       setLoading(false)
@@ -78,15 +91,29 @@ function App() {
           <div key={i} className="exchange">
             <div className="bubble user">{m.question}</div>
             <div className="bubble bot">
-              <span className="badge">{SOURCE_LABELS[m.category]}</span>
+              {m.category && <span className="badge">{SOURCE_LABELS[m.category]}</span>}
               <p>{m.answer}</p>
+              {m.citations.length > 0 && (
+                <details className="sources">
+                  <summary>Sources ({m.citations.length})</summary>
+                  <ol>
+                    {m.citations.map((c) => (
+                      <li key={c.chunk_id}>
+                        <strong>{c.section ?? SOURCE_LABELS[c.source]}</strong>
+                        {c.page !== null && <span> · page {c.page}</span>}
+                        <div className="snippet">{c.snippet}</div>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
+              )}
             </div>
           </div>
         ))}
 
         {loading && (
           <div className="status" aria-live="polite">
-            Thinking... {elapsed}s (answers can take up to a minute)
+            {messages[messages.length - 1]?.answer ? 'Writing' : 'Thinking'}... {elapsed}s
           </div>
         )}
         {error && (

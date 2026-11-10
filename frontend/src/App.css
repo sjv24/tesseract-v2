@@ -148,3 +148,27 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.sources {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #8a93ab;
+}
+
+.sources summary {
+  cursor: pointer;
+}
+
+.sources ol {
+  margin: 6px 0 0;
+  padding-left: 20px;
+}
+
+.sources li {
+  margin-bottom: 6px;
+}
+
+.snippet {
+  white-space: normal;
+  color: #6f7894;
+}

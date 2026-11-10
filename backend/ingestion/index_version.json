@@ -1,0 +1,56 @@
+{
+  "collections": {
+    "script": {
+      "collection": "Interstellar_Script_v2",
+      "chunks": 117,
+      "stored": 117,
+      "dimensions": 768,
+      "embed_seconds": 28.5,
+      "ok": true,
+      "built_at": "2026-11-03T14:23:59+04:00",
+      "git": {
+        "commit": "36bd1e6",
+        "uncommitted_changes": false
+      },
+      "embedding": {
+        "model": "embeddinggemma",
+        "input": "raw chunk text (no prefix)"
+      },
+      "chunking": {
+        "splitter": "langchain RecursiveCharacterTextSplitter",
+        "langchain_text_splitters": "1.1.3",
+        "chunk_tokens": 400,
+        "chars_per_token": 4,
+        "chunk_chars": 1600,
+        "overlap_chars": 200,
+        "min_chars": 300
+      }
+    },
+    "textbook": {
+      "collection": "Interstellar_Textbook_v2",
+      "chunks": 420,
+      "stored": 420,
+      "dimensions": 768,
+      "embed_seconds": 84.7,
+      "ok": true,
+      "built_at": "2026-11-03T14:23:59+04:00",
+      "git": {
+        "commit": "36bd1e6",
+        "uncommitted_changes": false
+      },
+      "embedding": {
+        "model": "embeddinggemma",
+        "input": "raw chunk text (no prefix)"
+      },
+      "chunking": {
+        "splitter": "langchain RecursiveCharacterTextSplitter",
+        "langchain_text_splitters": "1.1.3",
+        "chunk_tokens": 400,
+        "chars_per_token": 4,
+        "chunk_chars": 1600,
+        "overlap_chars": 200,
+        "min_chars": 300
+      }
+    }
+  }
+}

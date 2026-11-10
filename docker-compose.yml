@@ -1,0 +1,61 @@
+# Starts the whole app:  docker compose up --build
+#   frontend  http://localhost:3000
+#   backend   http://localhost:8000/docs
+# Ollama (the language model) runs on your computer, not in a container, because containers cannot use
+# the integrated graphics and the models are already downloaded there.
+
+services:
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.37.8
+    ports:
+      - "8080:8080"
+      - "50051:50051"
+    environment:
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      DEFAULT_VECTORIZER_MODULE: none
+    volumes:
+      - weaviate_data:/var/lib/weaviate
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/v1/.well-known/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      WEAVIATE_HOST: weaviate
+      OLLAMA_HOST: http://host.docker.internal:11434
+      CORS_ORIGINS: http://localhost:3000
+      FASTEMBED_CACHE_PATH: /models
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - reranker_models:/models
+    depends_on:
+      weaviate:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  weaviate_data:
+    name: weaviate_data # the same volume as the standalone container, so the existing index is reused
+  reranker_models:
